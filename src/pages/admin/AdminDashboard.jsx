@@ -142,16 +142,16 @@ const AdminDashboard = () => {
   const hubItems = [
     { label: 'Students', icon: Users, to: '/students', color: 'border-aurora-cyan text-aurora-cyan shadow-neon-cyan' },
     { label: 'Teachers', icon: UserX, to: '/teachers', color: 'border-aurora-amber text-aurora-amber shadow-neon-amber' },
+    { label: 'Guardians', icon: ShieldCheck, to: '/admin/parents', color: 'border-aurora-violet text-aurora-violet shadow-neon-violet' },
     { label: 'Classes', icon: Target, to: '/classes', color: 'border-aurora-violet text-aurora-violet shadow-neon-violet' },
     { label: 'Subjects', icon: Award, to: '/subjects', color: 'border-aurora-rose text-aurora-rose shadow-neon-rose' },
     { label: 'Lessons', icon: Calendar, to: '/lessons', color: 'border-aurora-cyan text-aurora-cyan shadow-neon-cyan' },
     { label: 'Timetables', icon: Grid3X3, to: '/timetables', color: 'border-aurora-emerald text-aurora-emerald shadow-neon-emerald' },
-    { label: 'Syllabus', icon: CheckSquare, to: '/syllabus', color: 'border-aurora-violet text-aurora-violet shadow-neon-violet' },
-    { label: 'Reports', icon: TrendingUp, to: '/reports', color: 'border-aurora-emerald text-aurora-emerald shadow-neon-emerald' },
+    { label: 'Syllabus', icon: BookOpen, to: '/syllabus', color: 'border-aurora-violet text-aurora-violet shadow-neon-violet' },
+    { label: 'Reports', icon: PieChart, to: '/reports', color: 'border-aurora-emerald text-aurora-emerald shadow-neon-emerald' },
     { label: 'Documents', icon: FolderOpen, to: '/documents', color: 'border-aurora-amber text-aurora-amber shadow-neon-amber' },
     { label: 'Export PDF', icon: FileText, to: '/export?format=pdf', color: 'border-aurora-rose text-aurora-rose shadow-neon-rose' },
     { label: 'Export Excel', icon: FileSpreadsheet, to: '/export?format=excel', color: 'border-aurora-cyan text-aurora-cyan shadow-neon-cyan' },
-    { label: 'Attendance', icon: Zap, to: '/reports', color: 'border-aurora-violet text-aurora-violet shadow-neon-violet' },
   ];
 
   if (loading) {

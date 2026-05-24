@@ -16,11 +16,14 @@ import Students from './pages/admin/Students';
 import Subjects from './pages/admin/Subjects';
 import Teachers from './pages/admin/Teachers';
 import Lessons from './pages/admin/Lessons';
-import AttendanceReports from './pages/admin/AttendanceReports';
+import IntelligenceReports from './pages/admin/IntelligenceReports';
 import SyllabusManager from './pages/admin/SyllabusManager';
 import TimetableManager from './pages/admin/TimetableManager';
 import SchoolDocuments from './pages/admin/SchoolDocuments';
 import DataExport from './pages/admin/DataExport';
+import ParentManagement from './pages/admin/ParentManagement';
+import PolicyEditor from './pages/admin/PolicyEditor';
+import ParentDashboard from './pages/parent/ParentDashboard';
 
 // --- MAIN APP COMPONENT ---
 function App() {
@@ -82,7 +85,7 @@ function App() {
 
         <Route path="/reports" element={
           <ProtectedRoute allowedRole="admin">
-            <AdminLayout><AttendanceReports /></AdminLayout>
+            <AdminLayout><IntelligenceReports /></AdminLayout>
           </ProtectedRoute>
         } />
 
@@ -107,6 +110,24 @@ function App() {
         <Route path="/export" element={
           <ProtectedRoute allowedRole="admin">
             <AdminLayout><DataExport /></AdminLayout>
+          </ProtectedRoute>
+        } />
+
+        <Route path="/admin/parents" element={
+          <ProtectedRoute allowedRole="admin">
+            <AdminLayout><ParentManagement /></AdminLayout>
+          </ProtectedRoute>
+        } />
+
+        <Route path="/admin/policies" element={
+          <ProtectedRoute allowedRole="admin">
+            <AdminLayout><PolicyEditor /></AdminLayout>
+          </ProtectedRoute>
+        } />
+
+        <Route path="/parent" element={
+          <ProtectedRoute allowedRole="parent">
+            <ParentDashboard />
           </ProtectedRoute>
         } />
 

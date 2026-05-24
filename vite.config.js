@@ -14,9 +14,12 @@ export default defineConfig({
     react(),
     tailwindcss(),
     VitePWA({
+      srcDir: 'src',
+      filename: 'sw.js',
+      strategies: 'injectManifest',
       registerType: 'autoUpdate',
       injectRegister: 'auto',
-      devOptions: { enabled: true },
+      devOptions: { enabled: true, type: 'module' },
       includeAssets: [
         'icon-192.png',
         'icon-512.png',

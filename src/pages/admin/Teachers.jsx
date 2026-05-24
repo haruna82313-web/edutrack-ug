@@ -125,9 +125,23 @@ const Teachers = () => {
           <h2 className="text-2xl lg:text-3xl font-black text-white tracking-tight">Staff Authorization</h2>
           <p className="text-slate-500 mt-1 font-medium text-sm lg:text-base">Grant and manage access for your instructional team.</p>
         </div>
-        <div className="flex items-center gap-3 bg-slate-900 px-4 py-2 rounded-2xl shadow-xl border border-slate-800 self-start">
-          <UserCheck className="text-primary-400" size={18} />
-          <span className="text-xs lg:text-sm font-bold text-slate-300">{teachers.length} Authorized Staff</span>
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4">
+          <div className="relative group">
+            <input
+              type="text"
+              placeholder="Search staff by name or email..."
+              className="bg-slate-900 border border-slate-800 rounded-2xl pl-11 pr-4 py-2.5 text-sm font-bold text-white focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500 transition-all w-full sm:w-64 lg:w-80 shadow-xl"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-primary-400 transition-colors" size={18} />
+          </div>
+          <div className="flex items-center gap-3 bg-slate-900 px-4 py-2 rounded-2xl shadow-xl border border-slate-800 self-start">
+            <UserCheck className="text-primary-400" size={18} />
+            <span className="text-xs lg:text-sm font-bold text-slate-300">
+              {searchQuery ? `${filteredTeachers.length} Found` : `${teachers.length} Authorized`}
+            </span>
+          </div>
         </div>
       </div>
 

@@ -6,14 +6,20 @@ import {
   LogOut, BookOpen, Clock, Star, Target, 
   CheckCircle2, XCircle, ChevronLeft, ListChecks,
   Calendar, GraduationCap, Zap, User, ArrowRight,
-  ClipboardList, Loader2, WifiOff, CloudUpload, ShieldCheck
+  ClipboardList, Loader2, WifiOff, CloudUpload, ShieldCheck, X, History, FileSpreadsheet, Quote
 } from 'lucide-react';
 
 const TeacherDashboard = () => {
   const { user } = useAuth();
   const isOnline = useOnlineStatus();
-  const [activeTab, setActiveTab] = useState('schedule'); 
+  const [activeTab, setActiveTab] = useState('home'); 
   const [lessons, setLessons] = useState([]);
+  const [motivationQuotes, setMotivationQuotes] = useState([]);
+  const [currentQuoteIndex, setCurrentQuoteIndex] = useState(0);
+  const [historyAttendance, setHistoryAttendance] = useState([]);
+  const [historyMarks, setHistoryMarks] = useState([]);
+  const [filterDate, setFilterDate] = useState(new Date().toISOString().split('T')[0]);
+  const [historyLoading, setHistoryLoading] = useState(false);
   const [syllabusTopics, setSyllabusTopics] = useState([]);
   const [activeLesson, setActiveLesson] = useState(null);
   const [students, setStudents] = useState([]);
@@ -29,6 +35,108 @@ const TeacherDashboard = () => {
   const [subjects, setSubjects] = useState([]);
   const [marks, setMarks] = useState({}); // { studentId: score }
   const [submittingMarks, setSubmittingMarks] = useState(false);
+
+  const [isPolicyModalOpen, setIsPolicyModalOpen] = useState(false);
+
+  const teacherGuidelines = `Institutional Staff Operational Charter
+
+Welcome to the EduTrack UG Staff Node. As an educator within our ecosystem, your role is pivotal in maintaining the integrity and real-time accuracy of the educational governance matrix. By accessing this terminal, you agree to adhere to the following professional guidelines.
+
+1. Real-Time Data Integrity: All attendance logs and academic scores submitted must be accurate and verified. You are the primary node for data entry, and your submissions directly impact parent notifications and institutional analytics.
+
+2. Professional Confidentiality: Student data accessible through this portal—including academic performance and attendance history—is strictly confidential. You must not share, export, or discuss this information outside of authorized institutional channels.
+
+3. Timely Synchronization: To ensure "The Pulse" functions effectively for parents, teachers are expected to finalize attendance records within 30 minutes of the session start. Academic marks should be synchronized within 48 hours of assessment completion.
+
+4. Offline Mode Protocol: When working in areas with restricted connectivity, the system will automatically queue your actions. It is your responsibility to ensure the terminal is brought online periodically to finalize the synchronization of local data to the cloud.
+
+5. Ethical Usage: This portal is an instructional tool. Any attempt to manipulate records, bypass security protocols, or use the system for non-educational purposes will result in immediate deactivation of your staff node.
+
+6. Security Compliance: Maintain the security of your access credentials. Never share your password or leave your terminal unattended while logged into the Staff Node.
+
+By continuing to use the EduTrack Staff Terminal, you acknowledge your responsibility as a guardian of educational data and a key facilitator of the EduTrack UG mission.`;
+
+  useEffect(() => {
+    fetchMotivationQuotes();
+  }, []);
+
+  useEffect(() => {
+    if (motivationQuotes.length > 0) {
+      const interval = setInterval(() => {
+        setCurrentQuoteIndex((prev) => (prev + 1) % motivationQuotes.length);
+      }, 10000);
+      return () => clearInterval(interval);
+    }
+  }, [motivationQuotes]);
+
+  const fetchMotivationQuotes = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('teacher_quotes')
+        .select('*');
+      if (error) throw error;
+      setMotivationQuotes(data || []);
+    } catch (error) {
+      console.error('Error fetching quotes:', error);
+    }
+  };
+
+  const fetchAttendanceHistory = async (classId, date) => {
+    try {
+      setHistoryLoading(true);
+      // Determine if we should filter by class or if it's not present in the table
+      const { data, error } = await supabase
+        .from('attendance')
+        .select('*, students(full_name, class_id)')
+        .gte('created_at', `${date}T00:00:00`)
+        .lte('created_at', `${date}T23:59:59`);
+
+      if (error) throw error;
+
+      // Filter by class_id manually if the attendance table doesn't have it directly
+      const filteredData = classId 
+        ? data.filter(a => a.students?.class_id === classId)
+        : data;
+
+      setHistoryAttendance(filteredData || []);
+    } catch (error) {
+      console.error('Error fetching attendance history:', error);
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  const fetchMarksHistory = async (classId, subjectId, date) => {
+    try {
+      setHistoryLoading(true);
+      let query = supabase
+        .from('student_marks')
+        .select('*, students!inner(full_name, class_id)')
+        .eq('students.class_id', classId)
+        .eq('subject_id', subjectId);
+
+      if (date) {
+        query = query.gte('created_at', `${date}T00:00:00`)
+                     .lte('created_at', `${date}T23:59:59`);
+      }
+
+      const { data, error } = await query.order('created_at', { ascending: false });
+      if (error) throw error;
+      setHistoryMarks(data || []);
+    } catch (error) {
+      console.error('Error fetching marks history:', error);
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'attendance_history' && selectedClass) {
+      fetchAttendanceHistory(selectedClass, filterDate);
+    } else if (activeTab === 'marks_history' && selectedClass && selectedSubject) {
+      fetchMarksHistory(selectedClass, selectedSubject, filterDate);
+    }
+  }, [activeTab, selectedClass, selectedSubject, filterDate]);
 
   useEffect(() => {
     let subChannel;
@@ -361,6 +469,30 @@ const TeacherDashboard = () => {
           </div>
         )}
 
+        {/* Motivation Quote Node */}
+        {activeTab === 'home' && motivationQuotes.length > 0 && (
+          <div className="bg-gradient-to-br from-primary-600/10 to-violet-600/10 border border-primary-500/20 rounded-[2rem] p-8 relative overflow-hidden group animate-in fade-in slide-in-from-top-4 duration-1000">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-primary-500/5 rounded-full blur-3xl -mr-16 -mt-16 group-hover:bg-primary-500/10 transition-colors"></div>
+            <div className="relative z-10 space-y-4">
+              <div className="flex items-center gap-3 text-primary-400">
+                <Quote size={20} className="animate-pulse" />
+                <span className="text-[10px] font-black uppercase tracking-[0.3em]">Staff Inspiration Node</span>
+              </div>
+              <p className="text-base lg:text-lg font-black tracking-tight leading-relaxed italic text-slate-200">
+                "{motivationQuotes[currentQuoteIndex]?.content}"
+              </p>
+              <div className="flex items-center justify-between pt-2">
+                <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest">— {motivationQuotes[currentQuoteIndex]?.author || 'Institutional Governance'}</p>
+                <div className="flex gap-1">
+                  {motivationQuotes.slice(0, 5).map((_, i) => (
+                    <div key={i} className={`h-1 rounded-full transition-all duration-500 ${i === currentQuoteIndex % 5 ? 'w-4 bg-primary-500' : 'w-1 bg-white/10'}`}></div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Welcome Card */}
         <div className="bg-slate-900 rounded-3xl lg:rounded-[2.5rem] p-6 lg:p-12 text-white relative overflow-hidden shadow-2xl border border-slate-800">
           <div className="absolute top-0 right-0 w-1/3 h-full bg-gradient-to-l from-primary-600/10 to-transparent"></div>
@@ -384,31 +516,105 @@ const TeacherDashboard = () => {
           </div>
         </div>
 
-        {/* Tab Switcher */}
-        <div className="flex bg-slate-900 p-1.5 lg:p-2 rounded-2xl lg:rounded-[2rem] shadow-xl border border-slate-800">
-          <button 
-            onClick={() => setActiveTab('schedule')}
-            className={`flex-1 flex items-center justify-center gap-2 py-3 lg:py-4 rounded-xl lg:rounded-[1.5rem] font-black text-[10px] lg:text-xs uppercase tracking-widest transition-all ${activeTab === 'schedule' ? 'bg-primary-600 text-white shadow-glow' : 'text-slate-500 hover:text-slate-300'}`}
-          >
-            <Clock size={14} lg:size={16} /> Daily Hub
-          </button>
-          <button 
-            onClick={() => setActiveTab('grades')}
-            className={`flex-1 flex items-center justify-center gap-2 py-3 lg:py-4 rounded-xl lg:rounded-[1.5rem] font-black text-[10px] lg:text-xs uppercase tracking-widest transition-all ${activeTab === 'grades' ? 'bg-primary-600 text-white shadow-glow' : 'text-slate-500 hover:text-slate-300'}`}
-          >
-            <Target size={14} lg:size={16} /> Academic Grades
-          </button>
-          <button 
-            onClick={() => setActiveTab('syllabus')}
-            className={`flex-1 flex items-center justify-center gap-2 py-3 lg:py-4 rounded-xl lg:rounded-[1.5rem] font-black text-[10px] lg:text-xs uppercase tracking-widest transition-all ${activeTab === 'syllabus' ? 'bg-primary-600 text-white shadow-glow' : 'text-slate-500 hover:text-slate-300'}`}
-          >
-            <ListChecks size={14} lg:size={16} /> Syllabus Map
-          </button>
-        </div>
+        {/* Hub Navigation Grid (3x2) */}
+        {activeTab === 'home' && (
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 lg:gap-6 animate-in zoom-in duration-500">
+            <button 
+              onClick={() => setActiveTab('schedule')}
+              className="aspect-square bg-slate-900 border-2 border-emerald-500/30 rounded-[2rem] lg:rounded-[2.5rem] flex flex-col items-center justify-center gap-3 lg:gap-4 transition-all hover:bg-emerald-500/5 hover:border-emerald-500/50 group active:scale-95 shadow-emerald-500/10"
+            >
+              <div className="w-12 h-12 lg:w-16 lg:h-16 bg-emerald-500/10 rounded-2xl lg:rounded-3xl flex items-center justify-center text-emerald-400 group-hover:scale-110 group-hover:rotate-6 transition-all duration-300">
+                <Clock size={28} lg:size={32} />
+              </div>
+              <span className="text-[9px] lg:text-xs font-black uppercase tracking-[0.2em] text-emerald-400">Daily Hub</span>
+            </button>
+
+            <button 
+              onClick={() => setActiveTab('grades')}
+              className="aspect-square bg-slate-900 border-2 border-amber-500/30 rounded-[2rem] lg:rounded-[2.5rem] flex flex-col items-center justify-center gap-3 lg:gap-4 transition-all hover:bg-amber-500/5 hover:border-amber-500/50 group active:scale-95 shadow-amber-500/10"
+            >
+              <div className="w-12 h-12 lg:w-16 lg:h-16 bg-amber-500/10 rounded-2xl lg:rounded-3xl flex items-center justify-center text-amber-400 group-hover:scale-110 group-hover:rotate-6 transition-all duration-300">
+                <Target size={28} lg:size={32} />
+              </div>
+              <span className="text-[9px] lg:text-xs font-black uppercase tracking-[0.2em] text-amber-400">Add Results</span>
+            </button>
+
+            <button 
+              onClick={() => {
+                setSelectedClass('');
+                setActiveTab('attendance_history');
+              }}
+              className="aspect-square bg-slate-900 border-2 border-emerald-500/30 rounded-[2rem] lg:rounded-[2.5rem] flex flex-col items-center justify-center gap-3 lg:gap-4 transition-all hover:bg-emerald-500/5 hover:border-emerald-500/50 group active:scale-95 shadow-emerald-500/10"
+            >
+              <div className="w-12 h-12 lg:w-16 lg:h-16 bg-emerald-500/10 rounded-2xl lg:rounded-3xl flex items-center justify-center text-emerald-400 group-hover:scale-110 group-hover:rotate-6 transition-all duration-300">
+                <History size={28} lg:size={32} />
+              </div>
+              <span className="text-[9px] lg:text-xs font-black uppercase tracking-[0.2em] text-emerald-400 text-center px-1 leading-tight">Attendance Logs</span>
+            </button>
+
+            <button 
+              onClick={() => {
+                setSelectedClass('');
+                setSelectedSubject('');
+                setActiveTab('marks_history');
+              }}
+              className="aspect-square bg-slate-900 border-2 border-amber-500/30 rounded-[2rem] lg:rounded-[2.5rem] flex flex-col items-center justify-center gap-3 lg:gap-4 transition-all hover:bg-amber-500/5 hover:border-amber-500/50 group active:scale-95 shadow-amber-500/10"
+            >
+              <div className="w-12 h-12 lg:w-16 lg:h-16 bg-amber-500/10 rounded-2xl lg:rounded-3xl flex items-center justify-center text-amber-400 group-hover:scale-110 group-hover:rotate-6 transition-all duration-300">
+                <FileSpreadsheet size={28} lg:size={32} />
+              </div>
+              <span className="text-[9px] lg:text-xs font-black uppercase tracking-[0.2em] text-amber-400 text-center px-1 leading-tight">Marks Archive</span>
+            </button>
+
+            <button 
+              onClick={() => setActiveTab('syllabus')}
+              className="aspect-square bg-slate-900 border-2 border-violet-500/30 rounded-[2rem] lg:rounded-[2.5rem] flex flex-col items-center justify-center gap-3 lg:gap-4 transition-all hover:bg-violet-500/5 hover:border-violet-500/50 group active:scale-95 shadow-violet-500/10"
+            >
+              <div className="w-12 h-12 lg:w-16 lg:h-16 bg-violet-500/10 rounded-2xl lg:rounded-3xl flex items-center justify-center text-violet-400 group-hover:scale-110 group-hover:rotate-6 transition-all duration-300">
+                <ListChecks size={28} lg:size={32} />
+              </div>
+              <span className="text-[9px] lg:text-xs font-black uppercase tracking-[0.2em] text-violet-400">Syllabus Map</span>
+            </button>
+
+            <button 
+              onClick={() => setIsPolicyModalOpen(true)}
+              className="aspect-square bg-slate-900 border-2 border-primary-500/30 rounded-[2rem] lg:rounded-[2.5rem] flex flex-col items-center justify-center gap-3 lg:gap-4 transition-all hover:bg-primary-500/5 hover:border-primary-500/50 group active:scale-95 shadow-primary-500/10"
+            >
+              <div className="w-12 h-12 lg:w-16 lg:h-16 bg-primary-500/10 rounded-2xl lg:rounded-3xl flex items-center justify-center text-primary-400 group-hover:scale-110 group-hover:rotate-6 transition-all duration-300">
+                <ShieldCheck size={28} lg:size={32} />
+              </div>
+              <span className="text-[9px] lg:text-xs font-black uppercase tracking-[0.2em] text-primary-400">Staff Charter</span>
+            </button>
+          </div>
+        )}
+
+        {/* Back to Hub Header for Views */}
+        {activeTab !== 'home' && (
+          <div className="flex items-center justify-between mb-8 animate-in slide-in-from-left duration-300">
+            <button 
+              onClick={() => setActiveTab('home')}
+              className="flex items-center gap-2 text-slate-500 hover:text-white transition-colors group"
+            >
+              <div className="w-10 h-10 bg-white/5 rounded-xl flex items-center justify-center group-hover:bg-white/10">
+                <ChevronLeft size={20} />
+              </div>
+              <span className="text-[10px] font-black uppercase tracking-widest">Return to Hub</span>
+            </button>
+            <div className="text-right">
+              <h2 className="text-sm font-black uppercase tracking-widest text-primary-400">
+                {activeTab === 'schedule' ? 'Daily Hub' : 
+                 activeTab === 'grades' ? 'Add Results' : 
+                 activeTab === 'attendance_history' ? 'Attendance Logs' :
+                 activeTab === 'marks_history' ? 'Marks Archive' : 
+                 'Syllabus Map'}
+              </h2>
+            </div>
+          </div>
+        )}
 
         {/* Dynamic Content */}
         <div className="space-y-6">
-          {activeTab === 'schedule' ? (
+          {activeTab === 'schedule' && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 lg:gap-6">
               {lessons.length === 0 ? (
                 <div className="col-span-full py-16 lg:py-20 text-center space-y-4 bg-slate-900 rounded-3xl lg:rounded-[2.5rem] border border-dashed border-slate-800">
@@ -452,7 +658,9 @@ const TeacherDashboard = () => {
                 ))
               )}
             </div>
-          ) : activeTab === 'grades' ? (
+          )}
+
+          {activeTab === 'grades' && (
             <div className="space-y-6">
               <div className="bg-slate-900 p-6 lg:p-8 rounded-3xl border border-slate-800 shadow-xl">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -525,7 +733,9 @@ const TeacherDashboard = () => {
                 </div>
               )}
             </div>
-          ) : (
+          )}
+
+          {activeTab === 'syllabus' && (
             <div className="space-y-3 lg:space-y-4">
               {syllabusTopics.map(topic => (
                 <div key={topic.id} className="bg-slate-900 p-4 lg:p-6 rounded-2xl lg:rounded-3xl shadow-xl border border-slate-800 flex items-center justify-between hover:shadow-primary-500/5 transition-all group active:scale-[0.99]">
@@ -550,7 +760,180 @@ const TeacherDashboard = () => {
               ))}
             </div>
           )}
+
+          {activeTab === 'attendance_history' && (
+            <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-500">
+              <div className="glass-card p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="space-y-1">
+                  <h3 className="text-xs font-black uppercase tracking-widest">Attendance Archive</h3>
+                  <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest">Select Class & Date to view logs</p>
+                </div>
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <select 
+                    className="bg-slate-950 border border-white/10 rounded-xl px-4 py-2 text-[10px] font-black uppercase tracking-widest text-white outline-none focus:border-emerald-500/50 transition-all"
+                    value={selectedClass}
+                    onChange={(e) => setSelectedClass(e.target.value)}
+                  >
+                    <option value="">Select Class</option>
+                    {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                  <input 
+                    type="date" 
+                    value={filterDate}
+                    onChange={(e) => setFilterDate(e.target.value)}
+                    className="bg-slate-950 border border-white/10 rounded-xl px-4 py-2 text-[10px] font-black uppercase tracking-widest text-white outline-none focus:border-emerald-500/50 transition-all [color-scheme:dark]"
+                  />
+                </div>
+              </div>
+
+              {historyLoading ? (
+                <div className="flex flex-col items-center justify-center py-20 gap-4">
+                  <Loader2 className="text-emerald-500 animate-spin" size={32} />
+                  <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-600">Retrieving Logs...</p>
+                </div>
+              ) : historyAttendance.length === 0 ? (
+                <div className="bg-white/5 border border-dashed border-white/10 rounded-[2.5rem] p-12 text-center space-y-4">
+                  <div className="w-16 h-16 bg-slate-900 rounded-full flex items-center justify-center mx-auto text-slate-700">
+                    <History size={32} />
+                  </div>
+                  <p className="text-slate-600 font-black text-[10px] uppercase tracking-widest leading-relaxed px-8">No attendance records found for the selected parameters</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="bg-emerald-500/10 border border-emerald-500/20 p-5 rounded-3xl text-center">
+                      <p className="text-[8px] font-black text-emerald-500 uppercase tracking-widest mb-1">Attended</p>
+                      <p className="text-2xl font-black text-emerald-400">{historyAttendance.filter(a => a.status === 'present').length}</p>
+                    </div>
+                    <div className="bg-rose-500/10 border border-rose-500/20 p-5 rounded-3xl text-center">
+                      <p className="text-[8px] font-black text-rose-500 uppercase tracking-widest mb-1">Missed</p>
+                      <p className="text-2xl font-black text-rose-400">{historyAttendance.filter(a => a.status === 'absent').length}</p>
+                    </div>
+                  </div>
+                  <div className="divide-y divide-white/5 bg-white/5 rounded-3xl border border-white/10 overflow-hidden">
+                    {historyAttendance.map((a, idx) => (
+                      <div key={idx} className="p-5 flex items-center justify-between hover:bg-white/5 transition-colors">
+                        <div className="flex items-center gap-4">
+                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-black text-[10px] ${a.status === 'present' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'}`}>
+                            {a.students?.full_name.substring(0, 1).toUpperCase()}
+                          </div>
+                          <span className="text-sm font-black text-slate-200">{a.students?.full_name}</span>
+                        </div>
+                        <span className={`text-[8px] font-black px-3 py-1 rounded-full uppercase tracking-widest ${a.status === 'present' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'}`}>
+                          {a.status}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {activeTab === 'marks_history' && (
+            <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-500">
+              <div className="glass-card p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="space-y-1">
+                  <h3 className="text-xs font-black uppercase tracking-widest">Marks Archive</h3>
+                  <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest">Historical Performance Matrix</p>
+                </div>
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <select 
+                    className="bg-slate-950 border border-white/10 rounded-xl px-4 py-2 text-[10px] font-black uppercase tracking-widest text-white outline-none focus:border-amber-500/50 transition-all"
+                    value={selectedClass}
+                    onChange={(e) => setSelectedClass(e.target.value)}
+                  >
+                    <option value="">Class</option>
+                    {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                  <select 
+                    className="bg-slate-950 border border-white/10 rounded-xl px-4 py-2 text-[10px] font-black uppercase tracking-widest text-white outline-none focus:border-amber-500/50 transition-all"
+                    value={selectedSubject}
+                    onChange={(e) => setSelectedSubject(e.target.value)}
+                  >
+                    <option value="">Subject</option>
+                    {subjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  </select>
+                  <input 
+                    type="date" 
+                    value={filterDate}
+                    onChange={(e) => setFilterDate(e.target.value)}
+                    className="bg-slate-950 border border-white/10 rounded-xl px-4 py-2 text-[10px] font-black uppercase tracking-widest text-white outline-none focus:border-amber-500/50 transition-all [color-scheme:dark]"
+                  />
+                </div>
+              </div>
+
+              {historyLoading ? (
+                <div className="flex flex-col items-center justify-center py-20 gap-4">
+                  <Loader2 className="text-amber-500 animate-spin" size={32} />
+                  <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-600">Retrieving Matrix...</p>
+                </div>
+              ) : historyMarks.length === 0 ? (
+                <div className="bg-white/5 border border-dashed border-white/10 rounded-[2.5rem] p-12 text-center space-y-4">
+                  <div className="w-16 h-16 bg-slate-900 rounded-full flex items-center justify-center mx-auto text-slate-700">
+                    <FileSpreadsheet size={32} />
+                  </div>
+                  <p className="text-slate-600 font-black text-[10px] uppercase tracking-widest leading-relaxed px-8">No score records found for the selected parameters</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="bg-white/5 rounded-3xl border border-white/10 overflow-hidden divide-y divide-white/5">
+                    {historyMarks.map((m, idx) => (
+                      <div key={idx} className="p-6 flex items-center justify-between hover:bg-white/5 transition-all group">
+                        <div className="space-y-1">
+                          <p className="text-sm font-black text-slate-200">{m.students?.full_name}</p>
+                          <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest">Logged {new Date(m.created_at).toLocaleDateString()}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-xl font-black text-amber-400 group-hover:scale-110 transition-transform">{m.marks}<span className="text-slate-600 text-[10px]">/{m.max_marks}</span></p>
+                          <p className="text-[7px] font-black text-slate-600 uppercase tracking-widest">Score Matrix</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
+        {/* Modals */}
+        {isPolicyModalOpen && (
+          <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-xl">
+            <div className="glass-card w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden animate-in zoom-in duration-300">
+              <div className="p-6 border-b border-white/10 flex items-center justify-between bg-white/5">
+                <div className="flex items-center gap-3">
+                  <ShieldCheck className="text-primary-400" size={24} />
+                  <div>
+                    <h3 className="font-black uppercase tracking-tight text-lg">Staff Operational Charter</h3>
+                    <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest mt-0.5">Rules of Engagement & Professional Conduct</p>
+                  </div>
+                </div>
+                <button onClick={() => setIsPolicyModalOpen(false)} className="p-2 text-slate-500 hover:text-white transition-colors">
+                  <X size={24} />
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-8 no-scrollbar bg-slate-900/50">
+                <div className="prose prose-invert max-w-none">
+                  <div className="whitespace-pre-wrap text-slate-300 font-medium leading-relaxed text-sm sm:text-base">
+                    {teacherGuidelines}
+                  </div>
+                </div>
+              </div>
+              <div className="p-6 border-t border-white/10 bg-white/5 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 size={16} className="text-emerald-500" />
+                  <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Verified Institutional Protocol</span>
+                </div>
+                <button 
+                  onClick={() => setIsPolicyModalOpen(false)}
+                  className="px-8 py-3 bg-primary-600 hover:bg-primary-500 text-white rounded-xl text-[10px] font-black uppercase tracking-[0.2em] transition-all shadow-glow"
+                >
+                  Acknowledge
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </main>
 
       {/* Floating Support Button */}

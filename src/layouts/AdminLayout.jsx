@@ -16,10 +16,12 @@ const AdminLayout = ({ children }) => {
   const [quoteIndex, setQuoteIndex] = useState(0);
   const [openMenus, setOpenMenus] = useState({});
   const [subscriptionStatus, setSubscriptionStatus] = useState('Active');
+  const [pendingParents, setPendingParents] = useState(0);
   const isOnline = useOnlineStatus();
 
   useEffect(() => {
     let subChannel;
+    let parentChannel;
 
     const checkSubscription = async () => {
       try {
@@ -33,35 +35,45 @@ const AdminLayout = ({ children }) => {
               .eq('id', profile.school_id);
             
             if (subError || !schools || schools.length === 0) {
-              console.log('Layout Sub Check Error or Empty - Defaulting to Active');
               setSubscriptionStatus('Active');
               return;
             }
 
-            const school = schools[0];
-            setSubscriptionStatus(school.subscription_status || 'Inactive');
+            setSubscriptionStatus(schools[0].subscription_status || 'Active');
 
-            // Cleanup existing channel if any
-            if (subChannel) supabase.removeChannel(subChannel);
-
-            // Sidebar Real-time sync with unique channel ID
+            // 1. Subscription Real-time
             subChannel = supabase
-              .channel(`sidebar-status-${profile.school_id}-${Math.random().toString(36).substring(7)}`)
+              .channel(`sidebar-status-${profile.school_id}`)
               .on('postgres_changes', { 
                 event: 'UPDATE', 
                 schema: 'public', 
                 table: 'schools',
                 filter: `id=eq.${profile.school_id}`
               }, (payload) => {
-                if (payload.new.subscription_status) {
-                  setSubscriptionStatus(payload.new.subscription_status);
-                }
+                if (payload.new.subscription_status) setSubscriptionStatus(payload.new.subscription_status);
               })
+              .subscribe();
+
+            // 2. Fetch Pending Parents Count
+            const fetchPending = async () => {
+              const { data, error } = await supabase.rpc('get_pending_parent_count');
+              if (!error) setPendingParents(data || 0);
+            };
+            fetchPending();
+
+            // 3. Parent Requests Real-time
+            parentChannel = supabase
+              .channel('parent-requests')
+              .on('postgres_changes', {
+                event: '*',
+                schema: 'public',
+                table: 'users',
+                filter: `role=eq.parent`
+              }, () => fetchPending())
               .subscribe();
           }
         }
       } catch (error) {
-        console.error('Error checking subscription in layout:', error);
         setSubscriptionStatus('Active');
       }
     };
@@ -69,6 +81,7 @@ const AdminLayout = ({ children }) => {
 
     return () => {
       if (subChannel) supabase.removeChannel(subChannel);
+      if (parentChannel) supabase.removeChannel(parentChannel);
     };
   }, []);
 
@@ -177,7 +190,18 @@ const AdminLayout = ({ children }) => {
             </div>
           </div>
 
-          <div className="flex items-center gap-4 lg:gap-6">
+          <div className="flex items-center gap-2 sm:gap-4 lg:gap-6">
+            {pendingParents > 0 && (
+              <Link 
+                to="/admin/parents"
+                className="flex items-center gap-2 bg-aurora-violet/10 border border-aurora-violet/20 px-3 sm:px-4 py-1.5 sm:py-2 rounded-full animate-pulse shadow-neon-violet group hover:bg-aurora-violet/20 transition-all shrink-0"
+              >
+                <div className="w-1 sm:w-1.5 h-1 sm:h-1.5 bg-aurora-violet rounded-full"></div>
+                <span className="text-[7px] sm:text-[9px] font-black text-aurora-violet uppercase tracking-widest">
+                  {pendingParents} Request{pendingParents > 1 ? 's' : ''}
+                </span>
+              </Link>
+            )}
             <div className="hidden sm:flex items-center gap-3">
               <div className="flex flex-col items-end">
                 <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Control Center</span>
@@ -193,7 +217,7 @@ const AdminLayout = ({ children }) => {
               onClick={() => setIsSidebarOpen(true)}
               className="w-12 h-12 lg:w-14 lg:h-14 flex items-center justify-center bg-white/5 border border-white/10 rounded-xl lg:rounded-2xl text-white hover:bg-white/10 hover:border-aurora-cyan/50 transition-all shadow-2xl group shrink-0"
             >
-              <Menu size={24} lg:size={28} className="group-hover:rotate-90 transition-transform duration-500" />
+              <Menu size={24} className="group-hover:rotate-90 transition-transform duration-500" />
             </button>
           </div>
         </header>

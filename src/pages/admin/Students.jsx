@@ -27,6 +27,7 @@ const Students = () => {
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [showDetails, setShowDetails] = useState(false);
   const [filterDate, setFilterDate] = useState('');
+  const [filterRole, setFilterRole] = useState('all'); // all, leaders, non_leaders, or specific role value
   
   const [formData, setFormData] = useState({
     fullName: '',
@@ -61,7 +62,7 @@ const Students = () => {
       let studentQuery = supabase
         .from('students')
         .select('*, classes(name)')
-        .order('created_at', { ascending: false });
+        .order('full_name', { ascending: true });
       if (schoolId) {
         studentQuery = studentQuery.eq('school_id', schoolId);
       }
@@ -84,7 +85,15 @@ const Students = () => {
     const matchesSearch = fullName.includes(searchLower) || className.includes(searchLower);
     const matchesDate = !filterDate || (student.created_at && student.created_at.startsWith(filterDate));
     
-    return matchesSearch && matchesDate;
+    const matchesRole = filterRole === 'all' 
+      ? true 
+      : filterRole === 'leaders' 
+        ? !!student.leadership_role 
+        : filterRole === 'non_leaders' 
+          ? !student.leadership_role 
+          : student.leadership_role === filterRole;
+    
+    return matchesSearch && matchesDate && matchesRole;
   });
 
   const handleAddStudent = async (e) => {
@@ -162,6 +171,23 @@ const Students = () => {
               onChange={(e) => setSearchTerm(e.target.value)}
             />
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-primary-400 transition-colors" size={18} />
+          </div>
+          <div className="relative flex items-center bg-slate-900 px-4 py-2 rounded-2xl shadow-xl border border-slate-800">
+            <ShieldCheck className="text-slate-500 mr-2" size={16} />
+            <select
+              className="bg-transparent border-none text-[10px] font-black uppercase tracking-widest text-slate-300 focus:ring-0 cursor-pointer outline-none"
+              value={filterRole}
+              onChange={(e) => setFilterRole(e.target.value)}
+            >
+              <option value="all" className="bg-slate-900 text-white">All Tiers</option>
+              <option value="leaders" className="bg-slate-900 text-emerald-400 font-bold">All Leaders</option>
+              <option value="non_leaders" className="bg-slate-900 text-slate-400">Non-Leaders</option>
+              <optgroup label="Specific Roles" className="bg-slate-950 text-primary-400 font-black">
+                {LEADERSHIP_ROLES.map(role => (
+                  <option key={role.value} value={role.value} className="bg-slate-900 text-slate-200 uppercase tracking-widest">{role.label}</option>
+                ))}
+              </optgroup>
+            </select>
           </div>
           <div className="relative flex items-center bg-slate-900 px-4 py-2 rounded-2xl shadow-xl border border-slate-800">
             <input

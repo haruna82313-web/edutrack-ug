@@ -10,6 +10,7 @@ import {
   Printer,
   Share2,
   AlertCircle,
+  Search,
 } from 'lucide-react';
 import { deleteSchoolDocument } from '../../lib/adminCrud';
 import SelectField from '../../components/admin/SelectField';
@@ -25,6 +26,16 @@ const SchoolDocuments = () => {
   const [previewDoc, setPreviewDoc] = useState(null);
   const [editDoc, setEditDoc] = useState(null);
   const [form, setForm] = useState({ title: '', docType: 'circular', body: '' });
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const filteredDocs = documents.filter(doc => {
+    const query = searchQuery.toLowerCase();
+    return (
+      doc.title?.toLowerCase().includes(query) ||
+      doc.body?.toLowerCase().includes(query) ||
+      docTypeLabel(doc.doc_type).toLowerCase().includes(query)
+    );
+  });
 
   const fetchDocs = async (sid) => {
     setLoading(true);
@@ -163,13 +174,33 @@ const SchoolDocuments = () => {
 
   return (
     <div className="space-y-8 animate-in fade-in duration-700 text-white">
-      <div>
-        <h2 className="text-2xl lg:text-3xl font-black tracking-tighter uppercase flex items-center gap-3">
-          <FileText className="text-aurora-cyan" /> School documents
-        </h2>
-        <p className="text-slate-400 mt-2 text-sm">
-          Type circulars and notices. Print or share between devices.
-        </p>
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h2 className="text-2xl lg:text-3xl font-black tracking-tighter uppercase flex items-center gap-3">
+            <FileText className="text-aurora-cyan" /> School documents
+          </h2>
+          <p className="text-slate-400 mt-2 text-sm">
+            Type circulars and notices. Print or share between devices.
+          </p>
+        </div>
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4">
+          <div className="relative group">
+            <input
+              type="text"
+              placeholder="Search documents..."
+              className="bg-slate-900 border border-slate-800 rounded-2xl pl-11 pr-4 py-2.5 text-sm font-bold text-white focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500 transition-all w-full sm:w-64 lg:w-80 shadow-xl"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-primary-400 transition-colors" size={18} />
+          </div>
+          <div className="flex items-center gap-3 bg-slate-900 px-4 py-2 rounded-2xl shadow-xl border border-slate-800 self-start">
+            <FileText className="text-primary-400" size={18} />
+            <span className="text-xs lg:text-sm font-bold text-slate-300">
+              {searchQuery ? `${filteredDocs.length} Found` : `${documents.length} Total`}
+            </span>
+          </div>
+        </div>
       </div>
 
       {error && (
@@ -225,24 +256,39 @@ const SchoolDocuments = () => {
             <div className="glass-card p-12 text-center">
               <Loader2 className="animate-spin text-aurora-cyan mx-auto" />
             </div>
-          ) : documents.length === 0 ? (
+          ) : filteredDocs.length === 0 ? (
             <div className="glass-card p-12 text-center border-dashed text-slate-500 text-[10px] font-black uppercase tracking-widest">
-              No documents yet
+              {searchQuery ? 'No matching documents' : 'No documents yet'}
             </div>
           ) : (
-            documents.map((doc) => (
+            filteredDocs.map((doc) => (
               <div
                 key={doc.id}
                 className={`glass-card p-4 lg:p-6 cursor-pointer transition-all active:scale-[0.98] ${previewDoc?.id === doc.id ? 'ring-2 ring-aurora-cyan' : ''}`}
                 onClick={() => setPreviewDoc(doc)}
               >
                 <div className="flex items-start justify-between gap-3 lg:gap-4">
+                  <div className="w-8 h-8 bg-primary-600/10 text-primary-400 rounded-lg flex items-center justify-center border border-primary-500/10 shrink-0 mt-1">
+                    <FileText size={16} />
+                  </div>
                   <div className="min-w-0 flex-1">
-                    <span className="text-[8px] lg:text-[9px] font-black text-aurora-violet uppercase tracking-widest">
-                      {docTypeLabel(doc.doc_type)}
-                    </span>
-                    <h4 className="font-black text-white mt-1 truncate text-sm lg:text-base">{doc.title}</h4>
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-[8px] lg:text-[9px] font-black text-aurora-violet uppercase tracking-widest">
+                        {docTypeLabel(doc.doc_type)}
+                      </span>
+                      <span className={`inline-flex px-2 py-0.5 rounded-full text-[7px] lg:text-[8px] font-black uppercase tracking-widest border ${
+                        ['circular', 'notice'].includes(doc.doc_type) 
+                          ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' 
+                          : 'bg-slate-800 text-slate-500 border-slate-700'
+                      }`}>
+                        {['circular', 'notice'].includes(doc.doc_type) ? 'Parent Portal Sync' : 'Internal Only'}
+                      </span>
+                    </div>
+                    <h4 className="font-black text-white truncate text-sm lg:text-base">{doc.title}</h4>
                     <p className="text-slate-500 text-[10px] lg:text-xs mt-1.5 lg:mt-2 line-clamp-2 whitespace-pre-wrap">{doc.body}</p>
+                    <p className="text-[8px] font-bold text-slate-600 uppercase tracking-widest mt-2">
+                      {new Date(doc.updated_at || doc.created_at).toLocaleDateString()}
+                    </p>
                   </div>
                   <RowActions
                     onEdit={() => setEditDoc({ ...doc })}

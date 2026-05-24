@@ -48,6 +48,11 @@
     @apply w-full rounded-2xl border border-white/10 px-6 py-4 focus:ring-2 focus:ring-aurora-cyan/50 focus:border-aurora-cyan outline-none transition-all duration-300 bg-white/5 text-white placeholder:text-slate-500;
   }
 
+  /* Force white calendar icon for date inputs */
+  input[type="date"] {
+    color-scheme: dark;
+  }
+
   /* Fix for select options visibility in dark mode */
   select.input-field option {
     @apply bg-aurora-navy text-white;
