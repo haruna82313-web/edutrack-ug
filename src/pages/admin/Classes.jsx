@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
-import { Plus, GraduationCap, Loader2, LayoutGrid, Calendar as CalendarIcon, ArrowRight, Search } from 'lucide-react';
+import { Plus, GraduationCap, Loader2, LayoutGrid, Calendar as CalendarIcon, ArrowRight, Search, Users } from 'lucide-react';
 import EditModal from '../../components/admin/EditModal';
 import RowActions from '../../components/admin/RowActions';
 import { deleteClassCascade } from '../../lib/adminCrud';
@@ -22,13 +22,17 @@ const Classes = () => {
     cls.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  const totalFilteredStudents = filteredClasses.reduce((acc, cls) => acc + (cls.students?.length || 0), 0);
+  const totalFilteredMales = filteredClasses.reduce((acc, cls) => acc + (cls.students?.filter(s => s.gender === 'Male').length || 0), 0);
+  const totalFilteredFemales = filteredClasses.reduce((acc, cls) => acc + (cls.students?.filter(s => s.gender === 'Female').length || 0), 0);
+
   const fetchClasses = async () => {
     try {
       setLoading(true);
       const { data, error } = await supabase
         .from('classes')
-        .select('*')
-        .order('created_at', { ascending: false });
+        .select('*, students(gender)')
+        .order('name', { ascending: true });
 
       if (error) throw error;
       setClasses(data || []);
@@ -121,11 +125,27 @@ const Classes = () => {
             />
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-primary-400 transition-colors" size={18} />
           </div>
-          <div className="flex items-center gap-3 bg-slate-900 px-4 py-2 rounded-2xl shadow-xl border border-slate-800 self-start">
-            <LayoutGrid className="text-primary-400" size={18} />
-            <span className="text-xs lg:text-sm font-bold text-slate-300">
-              {searchTerm ? `${filteredClasses.length} Found` : `${classes.length} Active`}
-            </span>
+          <div className="flex items-center gap-4 bg-slate-900 px-5 py-2.5 rounded-2xl shadow-xl border border-slate-800 self-start">
+            <div className="flex items-center gap-2">
+              <LayoutGrid className="text-primary-400" size={18} />
+              <span className="text-xs lg:text-sm font-bold text-slate-100">
+                {searchTerm ? `${filteredClasses.length} Found` : `${classes.length} Active`}
+              </span>
+            </div>
+            <div className="w-[1px] h-4 bg-slate-800"></div>
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total: {totalFilteredStudents}</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="text-[10px] font-black text-blue-400 uppercase tracking-widest flex items-center gap-1">
+                  M: {totalFilteredMales}
+                </span>
+                <span className="text-[10px] font-black text-rose-400 uppercase tracking-widest flex items-center gap-1">
+                  F: {totalFilteredFemales}
+                </span>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -178,31 +198,46 @@ const Classes = () => {
                 <thead>
                   <tr className="bg-slate-950/50 border-b border-slate-800">
                     <th className="px-8 py-6 text-[10px] font-black text-slate-500 uppercase tracking-widest">Designation</th>
-                    <th className="px-8 py-6 text-[10px] font-black text-slate-500 uppercase tracking-widest">Initialized</th>
+                    <th className="px-8 py-6 text-[10px] font-black text-slate-500 uppercase tracking-widest">Enrollment Breakdown</th>
                     <th className="px-8 py-6 text-[10px] font-black text-slate-500 uppercase tracking-widest text-right">Operations</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800">
-                  {filteredClasses.map((cls) => (
-                    <tr 
-                      key={cls.id} 
-                      onClick={() => navigate(`/classes/${cls.id}`)}
-                      className="hover:bg-slate-800/50 transition-colors group cursor-pointer"
-                    >
-                      <td className="px-8 py-6">
-                        <div className="flex items-center gap-4">
-                          <div className="w-10 h-10 bg-primary-600/10 text-primary-400 rounded-xl flex items-center justify-center font-black text-xs shrink-0 group-hover:bg-primary-600 group-hover:text-white transition-colors border border-primary-500/10 group-hover:shadow-glow">
-                            {cls.name.substring(0, 2).toUpperCase()}
+                  {filteredClasses.map((cls) => {
+                    const totalStudents = cls.students?.length || 0;
+                    const maleStudents = cls.students?.filter(s => s.gender === 'Male').length || 0;
+                    const femaleStudents = cls.students?.filter(s => s.gender === 'Female').length || 0;
+                    
+                    return (
+                      <tr 
+                        key={cls.id} 
+                        onClick={() => navigate(`/classes/${cls.id}`)}
+                        className="hover:bg-slate-800/50 transition-colors group cursor-pointer"
+                      >
+                        <td className="px-8 py-6">
+                          <div className="flex items-center gap-4">
+                            <div className="w-10 h-10 bg-primary-600/10 text-primary-400 rounded-xl flex items-center justify-center font-black text-xs shrink-0 group-hover:bg-primary-600 group-hover:text-white transition-colors border border-primary-500/10 group-hover:shadow-glow">
+                              {cls.name.substring(0, 2).toUpperCase()}
+                            </div>
+                            <span className="font-black text-slate-200 tracking-tight truncate max-w-[200px]" title={cls.name}>{cls.name}</span>
                           </div>
-                          <span className="font-black text-slate-200 tracking-tight truncate max-w-[200px]" title={cls.name}>{cls.name}</span>
-                        </div>
-                      </td>
-                      <td className="px-8 py-6">
-                        <span className="text-sm font-bold text-slate-500">
-                          {new Date(cls.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
-                        </span>
-                      </td>
-                      <td className="px-8 py-6 text-right">
+                        </td>
+                        <td className="px-8 py-6">
+                          <div className="flex items-center gap-4">
+                            <div className="flex flex-col">
+                              <span className="text-xs font-black text-slate-100 uppercase tracking-widest">Total: {totalStudents}</span>
+                              <div className="flex items-center gap-3 mt-1">
+                                <span className="text-[9px] font-black text-blue-400 uppercase tracking-widest flex items-center gap-1">
+                                  <div className="w-1 h-1 bg-blue-500 rounded-full"></div> M: {maleStudents}
+                                </span>
+                                <span className="text-[9px] font-black text-rose-400 uppercase tracking-widest flex items-center gap-1">
+                                  <div className="w-1 h-1 bg-rose-500 rounded-full"></div> F: {femaleStudents}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-8 py-6 text-right">
                         <div className="flex items-center justify-end gap-2">
                           <RowActions
                             onEdit={() => setEditing({ id: cls.id, name: cls.name })}
@@ -214,42 +249,48 @@ const Classes = () => {
                         </div>
                       </td>
                     </tr>
-                  ))}
-                </tbody>
+                  );
+                })}
+              </tbody>
               </table>
             </div>
 
             {/* Mobile Card View */}
             <div className="grid grid-cols-1 gap-3 md:hidden">
-              {filteredClasses.map((cls) => (
-                <div 
-                  key={cls.id} 
-                  onClick={() => navigate(`/classes/${cls.id}`)}
-                  className="bg-slate-900 p-4 rounded-2xl shadow-xl border border-slate-800 flex items-center justify-between group active:scale-[0.98] transition-all cursor-pointer"
-                >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-10 h-10 bg-primary-600/10 text-primary-400 rounded-xl flex items-center justify-center font-black text-xs shrink-0 border border-primary-500/10 group-active:bg-primary-600 group-active:text-white transition-colors shadow-glow">
-                      {cls.name.substring(0, 2).toUpperCase()}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <h3 className="font-black text-slate-100 tracking-tight truncate text-sm leading-none" title={cls.name}>{cls.name}</h3>
-                      <div className="flex items-center gap-1.5 mt-1.5 text-slate-500">
-                        <CalendarIcon size={12} className="text-primary-500 shrink-0" />
-                        <span className="text-[9px] font-black uppercase tracking-widest truncate">
-                          {new Date(cls.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
-                        </span>
+              {filteredClasses.map((cls) => {
+                const totalStudents = cls.students?.length || 0;
+                const maleStudents = cls.students?.filter(s => s.gender === 'Male').length || 0;
+                const femaleStudents = cls.students?.filter(s => s.gender === 'Female').length || 0;
+
+                return (
+                  <div 
+                    key={cls.id} 
+                    onClick={() => navigate(`/classes/${cls.id}`)}
+                    className="bg-slate-900 p-4 rounded-2xl shadow-xl border border-slate-800 flex items-center justify-between group active:scale-[0.98] transition-all cursor-pointer"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-10 h-10 bg-primary-600/10 text-primary-400 rounded-xl flex items-center justify-center font-black text-xs shrink-0 border border-primary-500/10 group-active:bg-primary-600 group-active:text-white transition-colors shadow-glow">
+                        {cls.name.substring(0, 2).toUpperCase()}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <h3 className="font-black text-slate-100 tracking-tight truncate text-sm leading-none" title={cls.name}>{cls.name}</h3>
+                        <div className="flex items-center gap-3 mt-2">
+                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">T: {totalStudents}</span>
+                          <span className="text-[10px] font-black text-blue-400 uppercase tracking-widest">M: {maleStudents}</span>
+                          <span className="text-[10px] font-black text-rose-400 uppercase tracking-widest">F: {femaleStudents}</span>
+                        </div>
                       </div>
                     </div>
+                    <div className="flex items-center gap-2">
+                      <RowActions
+                        onEdit={() => setEditing({ id: cls.id, name: cls.name })}
+                        onDelete={() => deleteClass(cls.id)}
+                      />
+                      <ArrowRight size={16} className="text-slate-700 group-hover:text-primary-400" />
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <RowActions
-                      onEdit={() => setEditing({ id: cls.id, name: cls.name })}
-                      onDelete={() => deleteClass(cls.id)}
-                    />
-                    <ArrowRight size={16} className="text-slate-700 group-hover:text-primary-400" />
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </>
         )}

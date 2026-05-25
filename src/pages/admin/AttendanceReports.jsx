@@ -12,6 +12,7 @@ const AttendanceReports = () => {
   const [activeTab, setActiveTab] = useState('intelligence'); // 'intelligence' or 'class_view'
   const [classes, setClasses] = useState([]);
   const [selectedClass, setSelectedClass] = useState('');
+  const [filterGender, setFilterGender] = useState('all');
   const [classAttendance, setClassAttendance] = useState([]);
 
   useEffect(() => {
@@ -38,7 +39,7 @@ const AttendanceReports = () => {
         .select(`
           status,
           created_at,
-          students!inner (id, full_name, class_id)
+          students!inner (id, full_name, class_id, gender)
         `)
         .eq('students.class_id', classId)
         .gte('created_at', `${date}T00:00:00`)
@@ -70,7 +71,7 @@ const AttendanceReports = () => {
         .select(`
           status,
           created_at,
-          students (full_name, parent_phone, classes (name))
+          students (full_name, parent_phone, gender, classes (name))
         `)
         .eq('status', 'absent');
 
@@ -120,6 +121,7 @@ const AttendanceReports = () => {
             name, 
             class: curr.students.classes?.name || 'Unassigned', 
             phone: curr.students.parent_phone, 
+            gender: curr.students.gender,
             missedCount: 0 
           };
         }
@@ -141,6 +143,9 @@ const AttendanceReports = () => {
     { id: 'month', label: 'Last 30 Days' },
     { id: '3months', label: 'Last 3 Months' },
   ];
+
+  const filteredReportData = reportData.filter(row => filterGender === 'all' || row.gender === filterGender);
+  const filteredClassAttendance = classAttendance.filter(row => filterGender === 'all' || row.students?.gender === filterGender);
 
   return (
     <div className="space-y-6 lg:space-y-10 animate-in fade-in slide-in-from-bottom-6 duration-700 text-slate-300">
@@ -198,6 +203,18 @@ const AttendanceReports = () => {
                 }}
               />
             </div>
+            <div className="h-4 w-[1px] bg-slate-800 mx-1"></div>
+            <div className="relative flex items-center px-2">
+              <select
+                className="bg-transparent border-none text-[9px] font-black uppercase tracking-widest text-slate-500 focus:ring-0 cursor-pointer outline-none"
+                value={filterGender}
+                onChange={(e) => setFilterGender(e.target.value)}
+              >
+                <option value="all" className="bg-slate-900 text-white">All Genders</option>
+                <option value="Male" className="bg-slate-900 text-white">Male</option>
+                <option value="Female" className="bg-slate-900 text-white">Female</option>
+              </select>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 gap-8">
@@ -216,7 +233,7 @@ const AttendanceReports = () => {
                   </div>
                 </div>
                 <div className="hidden sm:block px-4 py-1.5 bg-rose-600 text-white rounded-full text-[10px] font-black uppercase tracking-widest shadow-rose-glow">
-                  {reportData.length} Discrepancies
+                  {filteredReportData.length} Discrepancies
                 </div>
               </div>
 
@@ -239,7 +256,7 @@ const AttendanceReports = () => {
                           <p className="text-slate-600 font-bold uppercase tracking-widest text-[10px]">Processing Matrix...</p>
                         </td>
                       </tr>
-                    ) : reportData.length === 0 ? (
+                    ) : filteredReportData.length === 0 ? (
                       <tr>
                         <td colSpan="4" className="px-8 py-20 text-center">
                           <div className="w-16 h-16 bg-emerald-500/10 text-emerald-400 rounded-full flex items-center justify-center mx-auto mb-4 border border-emerald-500/20 shadow-emerald-glow">
@@ -249,14 +266,21 @@ const AttendanceReports = () => {
                         </td>
                       </tr>
                     ) : (
-                      reportData.map((row, i) => (
+                      filteredReportData.map((row, i) => (
                         <tr key={i} className="hover:bg-rose-500/5 transition-colors group">
                           <td className="px-8 py-6">
                             <div className="flex items-center gap-4">
                               <div className="w-10 h-10 bg-rose-500/10 text-rose-400 rounded-xl flex items-center justify-center font-black text-xs border border-rose-500/10 group-hover:bg-rose-600 group-hover:text-white transition-all">
                                 {row.name.substring(0, 1).toUpperCase()}
                               </div>
-                              <span className="font-black text-slate-200 tracking-tight">{row.name}</span>
+                              <div className="flex flex-col">
+                                <span className="font-black text-slate-200 tracking-tight">{row.name}</span>
+                                {row.gender && (
+                                  <span className={`text-[8px] font-black uppercase tracking-widest ${row.gender === 'Male' ? 'text-blue-400' : 'text-rose-400'}`}>
+                                    {row.gender}
+                                  </span>
+                                )}
+                              </div>
                             </div>
                           </td>
                           <td className="px-8 py-6">
@@ -288,10 +312,27 @@ const AttendanceReports = () => {
         </>
       ) : (
         <div className="space-y-6 animate-in slide-in-from-right-4 duration-500">
-          <div className="glass-card p-6 lg:p-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div className="space-y-1">
-              <h3 className="text-xs font-black uppercase tracking-widest text-white">Full Class Log</h3>
-              <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Select target class and session date</p>
+          <div className="glass-card p-6 lg:p-8 flex flex-col md:flex-row md:items-center justify-between gap-6">
+            <div className="flex flex-col sm:flex-row items-center gap-6">
+              <div className="space-y-1">
+                <h3 className="text-xs font-black uppercase tracking-widest text-white">Full Class Log</h3>
+                <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Select target class and session date</p>
+              </div>
+              {selectedClass && filteredClassAttendance.length > 0 && (
+                <div className="flex items-center gap-4 bg-slate-950/50 px-4 py-2 rounded-2xl border border-slate-800">
+                  <div className="flex items-center gap-2 pr-4 border-r border-slate-800">
+                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total: {filteredClassAttendance.length}</span>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <span className="text-[10px] font-black text-blue-400 uppercase tracking-widest flex items-center gap-1.5">
+                      <div className="w-1.5 h-1.5 bg-blue-500 rounded-full"></div> M: {filteredClassAttendance.filter(a => a.students?.gender === 'Male').length}
+                    </span>
+                    <span className="text-[10px] font-black text-rose-400 uppercase tracking-widest flex items-center gap-1.5">
+                      <div className="w-1.5 h-1.5 bg-rose-500 rounded-full"></div> F: {filteredClassAttendance.filter(a => a.students?.gender === 'Female').length}
+                    </span>
+                  </div>
+                </div>
+              )}
             </div>
             <div className="flex flex-col sm:flex-row gap-3">
               <select 
@@ -338,7 +379,7 @@ const AttendanceReports = () => {
                         <p className="text-slate-600 font-black uppercase tracking-widest text-[10px]">Select a class to initialize view</p>
                       </td>
                     </tr>
-                  ) : classAttendance.length === 0 ? (
+                  ) : filteredClassAttendance.length === 0 ? (
                     <tr>
                       <td colSpan="3" className="px-8 py-20 text-center">
                         <div className="w-16 h-16 bg-slate-950 rounded-full flex items-center justify-center mx-auto mb-4 border border-slate-800">
@@ -348,14 +389,21 @@ const AttendanceReports = () => {
                       </td>
                     </tr>
                   ) : (
-                    classAttendance.map((row, i) => (
+                    filteredClassAttendance.map((row, i) => (
                       <tr key={i} className="hover:bg-white/5 transition-colors group">
                         <td className="px-8 py-6">
                           <div className="flex items-center gap-4">
                             <div className="w-10 h-10 bg-white/5 text-slate-400 rounded-xl flex items-center justify-center font-black text-xs border border-white/5 group-hover:bg-primary-600 group-hover:text-white transition-all">
                               {row.students?.full_name.substring(0, 1).toUpperCase()}
                             </div>
-                            <span className="font-black text-slate-200 tracking-tight">{row.students?.full_name}</span>
+                            <div className="flex flex-col">
+                              <span className="font-black text-slate-200 tracking-tight">{row.students?.full_name}</span>
+                              {row.students?.gender && (
+                                <span className={`text-[8px] font-black uppercase tracking-widest ${row.students.gender === 'Male' ? 'text-blue-400' : 'text-rose-400'}`}>
+                                  {row.students.gender}
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </td>
                         <td className="px-8 py-6 text-center">

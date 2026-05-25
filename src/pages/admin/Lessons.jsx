@@ -46,24 +46,31 @@ const Lessons = () => {
       setFilterRange(range);
       if (date) setCustomDate(date);
 
-      const { data: profile } = await supabase.from('users').select('school_id').eq('id', user.id).single();
+      const { data: profile, error: profileError } = await supabase.from('users').select('school_id').eq('id', user.id).single();
+      if (profileError) throw profileError;
+      
       const sid = profile?.school_id;
+      if (!sid) throw new Error("School ID not found for current user.");
 
       const [tRes, sRes, cRes] = await Promise.all([
-        sid 
-          ? supabase.from('all_teachers_view').select('*').eq('school_id', sid)
-          : supabase.from('all_teachers_view').select('*'),
-        sid
-          ? supabase.from('subjects').select('*').eq('school_id', sid).order('name')
-          : supabase.from('subjects').select('*').order('name'),
-        sid
-          ? supabase.from('classes').select('*').eq('school_id', sid).order('name')
-          : supabase.from('classes').select('*').order('name')
+        supabase.from('all_teachers_view').select('*').eq('school_id', sid),
+        supabase.from('subjects').select('*').eq('school_id', sid).order('name'),
+        supabase.from('classes').select('*').eq('school_id', sid).order('name')
       ]);
 
-      if (tRes.error) throw new Error("Teachers load failed: " + tRes.error.message);
+      console.log("Teachers from view:", tRes.data);
+
+      if (tRes.error) {
+        console.error("Error fetching teachers:", tRes.error);
+        const { data: userData } = await supabase.from('users')
+          .select('id, full_name, email, gender, school_id')
+          .eq('role', 'teacher')
+          .eq('school_id', sid);
+        setTeachers(userData?.map(u => ({ ...u, registered_id: u.id, is_registered: true })) || []);
+      } else {
+        setTeachers(tRes.data || []);
+      }
       
-      setTeachers(tRes.data || []);
       setSubjects(sRes.data || []);
       setClasses(cRes.data || []);
 
@@ -281,7 +288,11 @@ const Lessons = () => {
                 required
               >
                 <option value="">Select Staff</option>
-                {teachers.map(t => <option key={t.email} value={t.email}>{t.full_name}</option>)}
+                {teachers.map(t => (
+                  <option key={t.email} value={t.email}>
+                    {t.full_name} {t.is_registered ? '' : '(Invited)'} ({t.gender === 'Male' ? 'M' : 'F'})
+                  </option>
+                ))}
               </select>
               <User className="absolute left-4 top-1/2 -translate-y-1/2 text-aurora-cyan" size={18} />
             </div>
@@ -399,8 +410,10 @@ const Lessons = () => {
         <input type="date" className="input-field w-full" value={editing?.lessonDate || ''} onChange={(e) => setEditing({ ...editing, lessonDate: e.target.value })} />
         <select className="input-field w-full appearance-none" value={editing?.teacherId || ''} onChange={(e) => setEditing({ ...editing, teacherId: e.target.value })}>
           <option value="">Unassigned</option>
-          {teachers.filter((t) => t.registered_id).map((t) => (
-            <option key={t.email} value={t.registered_id}>{t.full_name}</option>
+          {teachers.filter((t) => t.registered_id || t.id).map((t) => (
+            <option key={t.email} value={t.registered_id || t.id}>
+              {t.full_name} ({t.gender === 'Male' ? 'M' : 'F'})
+            </option>
           ))}
         </select>
         <select className="input-field w-full appearance-none" value={editing?.subjectId || ''} onChange={(e) => setEditing({ ...editing, subjectId: e.target.value })}>

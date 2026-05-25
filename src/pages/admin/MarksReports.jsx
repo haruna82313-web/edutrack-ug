@@ -12,6 +12,7 @@ const MarksReports = () => {
   const [marksData, setMarksData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filterRange, setFilterRange] = useState('today');
+  const [filterGender, setFilterGender] = useState('all');
   const [customDate, setCustomDate] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -32,7 +33,7 @@ const MarksReports = () => {
         .from('student_marks')
         .select(`
           *,
-          students (full_name, classes (name)),
+          students (full_name, gender, classes (name)),
           subjects (name),
           users!student_marks_teacher_id_fkey (full_name)
         `)
@@ -79,12 +80,14 @@ const MarksReports = () => {
 
   const filteredMarks = marksData.filter(m => {
     const query = searchTerm.toLowerCase();
-    return (
+    const matchesSearch = (
       m.students?.full_name?.toLowerCase().includes(query) ||
       m.subjects?.name?.toLowerCase().includes(query) ||
       m.students?.classes?.name?.toLowerCase().includes(query) ||
       m.users?.full_name?.toLowerCase().includes(query)
     );
+    const matchesGender = filterGender === 'all' || m.students?.gender === filterGender;
+    return matchesSearch && matchesGender;
   });
 
   const ranges = [
@@ -146,6 +149,18 @@ const MarksReports = () => {
                 <RefreshCw size={12} />
               </button>
             )}
+          </div>
+          <div className="h-4 w-[1px] bg-slate-800 mx-1"></div>
+          <div className="relative flex items-center px-2">
+            <select
+              className="bg-transparent border-none text-[9px] font-black uppercase tracking-widest text-slate-500 focus:ring-0 cursor-pointer outline-none"
+              value={filterGender}
+              onChange={(e) => setFilterGender(e.target.value)}
+            >
+              <option value="all" className="bg-slate-900 text-white">All Genders</option>
+              <option value="Male" className="bg-slate-900 text-white">Male</option>
+              <option value="Female" className="bg-slate-900 text-white">Female</option>
+            </select>
           </div>
         </div>
       </div>
@@ -212,7 +227,14 @@ const MarksReports = () => {
                   <tr key={m.id} className="hover:bg-aurora-cyan/5 transition-colors group">
                     <td className="px-8 py-6">
                       <div className="flex flex-col">
-                        <span className="font-black text-slate-200 tracking-tight">{m.students?.full_name}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="font-black text-slate-200 tracking-tight">{m.students?.full_name}</span>
+                          {m.students?.gender && (
+                            <span className={`text-[8px] font-black px-1.5 py-0.5 rounded uppercase tracking-tighter ${m.students.gender === 'Male' ? 'bg-blue-500/10 text-blue-400' : 'bg-rose-500/10 text-rose-400'}`}>
+                              {m.students.gender === 'Male' ? 'M' : 'F'}
+                            </span>
+                          )}
+                        </div>
                         <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest mt-1 flex items-center gap-1">
                           <GraduationCap size={10} /> {m.students?.classes?.name}
                         </span>
@@ -268,7 +290,14 @@ const MarksReports = () => {
               <div key={m.id} className="p-5 space-y-4 active:bg-slate-800 transition-colors">
                 <div className="flex items-start justify-between">
                   <div className="min-w-0 flex-1">
-                    <h4 className="font-black text-slate-100 text-sm truncate">{m.students?.full_name}</h4>
+                    <div className="flex items-center gap-2">
+                      <h4 className="font-black text-slate-100 text-sm truncate">{m.students?.full_name}</h4>
+                      {m.students?.gender && (
+                        <span className={`text-[7px] font-black px-1 py-0.5 rounded uppercase tracking-tighter ${m.students.gender === 'Male' ? 'bg-blue-500/10 text-blue-400' : 'bg-rose-500/10 text-rose-400'}`}>
+                          {m.students.gender === 'Male' ? 'M' : 'F'}
+                        </span>
+                      )}
+                    </div>
                     <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mt-1">
                       {m.students?.classes?.name} • {m.subjects?.name}
                     </p>

@@ -28,7 +28,15 @@ import {
 const AdminDashboard = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const [stats, setStats] = useState({ present: 0, absent: 0, participation: 0 });
+  const [stats, setStats] = useState({ 
+    present: 0, 
+    absent: 0, 
+    participation: 0,
+    maleStudents: 0,
+    femaleStudents: 0,
+    maleTeachers: 0,
+    femaleTeachers: 0
+  });
   const [loading, setLoading] = useState(true);
   const [subscriptionStatus, setSubscriptionStatus] = useState('Active');
   const [showSubModal, setShowSubModal] = useState(false);
@@ -107,30 +115,60 @@ const AdminDashboard = () => {
 
   const fetchDashboardStats = async () => {
     try {
+      const { data: profile } = await supabase.from('users').select('school_id').eq('id', user.id).single();
+      const schoolId = profile?.school_id;
+
       const now = new Date();
       const todayStart = new Date(now.setHours(0, 0, 0, 0)).toISOString();
       const todayEnd = new Date(now.setHours(23, 59, 59, 999)).toISOString();
 
-      const { data: attendanceData } = await supabase
-        .from('attendance')
-        .select('status')
+      // Attendance Stats
+      let attendanceQuery = supabase.from('attendance').select('status');
+      if (schoolId) attendanceQuery = attendanceQuery.eq('school_id', schoolId);
+      
+      const { data: attendanceData } = await attendanceQuery
         .gte('created_at', todayStart)
         .lte('created_at', todayEnd);
 
       const presentCount = attendanceData?.filter((a) => a.status === 'present').length || 0;
       const absentCount = attendanceData?.filter((a) => a.status === 'absent').length || 0;
 
-      const { data: lessonData } = await supabase
-        .from('lessons')
-        .select('status')
-        .eq('lesson_date', new Date().toISOString().split('T')[0]);
+      // Lesson Stats
+      let lessonQuery = supabase.from('lessons').select('status').eq('lesson_date', new Date().toISOString().split('T')[0]);
+      if (schoolId) lessonQuery = lessonQuery.eq('school_id', schoolId);
+      
+      const { data: lessonData } = await lessonQuery;
 
       const totalLessons = lessonData?.length || 0;
       const completedLessons = lessonData?.filter((l) => l.status === 'completed').length || 0;
       const participationRate =
         totalLessons > 0 ? Math.round((completedLessons / totalLessons) * 100) : 0;
 
-      setStats({ present: presentCount, absent: absentCount, participation: participationRate });
+      // Student Gender Stats
+      let studentQuery = supabase.from('students').select('gender');
+      if (schoolId) studentQuery = studentQuery.eq('school_id', schoolId);
+      const { data: studentData } = await studentQuery;
+      
+      const maleStudents = studentData?.filter(s => s.gender === 'Male').length || 0;
+      const femaleStudents = studentData?.filter(s => s.gender === 'Female').length || 0;
+
+      // Teacher Gender Stats
+      let teacherQuery = supabase.from('all_teachers_view').select('gender');
+      if (schoolId) teacherQuery = teacherQuery.eq('school_id', schoolId);
+      const { data: teacherData } = await teacherQuery;
+      
+      const maleTeachers = teacherData?.filter(t => t.gender === 'Male').length || 0;
+      const femaleTeachers = teacherData?.filter(t => t.gender === 'Female').length || 0;
+
+      setStats({ 
+        present: presentCount, 
+        absent: absentCount, 
+        participation: participationRate,
+        maleStudents,
+        femaleStudents,
+        maleTeachers,
+        femaleTeachers
+      });
     } catch (error) {
       console.error('Error fetching dashboard data:', error.message);
     } finally {
@@ -195,16 +233,16 @@ const AdminDashboard = () => {
                 type="button"
                 disabled={isDisabled}
                 onClick={() => navigate(item.to)}
-                className={`aspect-square rounded-xl sm:rounded-3xl border-2 flex flex-col items-center justify-center gap-2 sm:gap-5 transition-all duration-500 group relative ${
+                className={`aspect-square rounded-3xl border-2 flex flex-col items-center justify-center gap-3 sm:gap-5 transition-all duration-500 group relative ${
                   isDisabled 
                     ? 'bg-slate-900/50 border-slate-800 text-slate-700 grayscale' 
                     : `bg-white/5 hover:scale-[1.05] hover:bg-white/10 active:scale-95 ${item.color}`
                 }`}
               >
-                <div className={`p-2 sm:p-5 rounded-lg sm:rounded-2xl transition-all duration-500 ${isDisabled ? 'bg-slate-950' : 'bg-white/5 group-hover:rotate-6 group-hover:scale-110'}`}>
-                  <Icon className="w-5 h-5 sm:w-9 sm:h-9" />
+                <div className={`p-4 sm:p-5 rounded-2xl sm:rounded-2xl transition-all duration-500 ${isDisabled ? 'bg-slate-950' : 'bg-white/5 group-hover:rotate-6 group-hover:scale-110'}`}>
+                  <Icon className="w-6 h-6 sm:w-9 sm:h-9" />
                 </div>
-                <span className={`text-[8px] sm:text-[11px] font-black uppercase tracking-widest sm:tracking-[0.25em] transition-all px-2 text-center leading-tight break-words max-w-full ${!isDisabled && 'group-hover:tracking-[0.35em]'}`}>
+                <span className={`text-[10px] sm:text-[11px] font-black uppercase tracking-[0.2em] sm:tracking-[0.25em] transition-all px-2 text-center leading-tight break-words max-w-full ${!isDisabled && 'group-hover:tracking-[0.35em]'}`}>
                   {item.label}
                 </span>
                 {isDisabled && (
@@ -239,27 +277,38 @@ const AdminDashboard = () => {
         </button>
       </div>
 
-      <div className="mt-10 grid grid-cols-1 md:grid-cols-3 gap-8">
+      <div className="mt-10 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
         <InsightCard
-          label="On-Site"
-          value={`${stats.present} Students`}
+          label="Total Students"
+          value={`${stats.maleStudents + stats.femaleStudents}`}
+          subValue={`M: ${stats.maleStudents} | F: ${stats.femaleStudents}`}
           icon={<Users size={24} />}
           color={isSubscribed ? "text-aurora-cyan" : "text-slate-700"}
           glow={isSubscribed ? "shadow-neon-cyan" : ""}
         />
         <InsightCard
-          label="Unaccounted"
-          value={`${stats.absent} Students`}
+          label="Total Teachers"
+          value={`${stats.maleTeachers + stats.femaleTeachers}`}
+          subValue={`M: ${stats.maleTeachers} | F: ${stats.femaleTeachers}`}
           icon={<UserX size={24} />}
-          color={isSubscribed ? "text-aurora-rose" : "text-slate-700"}
-          glow={isSubscribed ? "shadow-neon-rose" : ""}
+          color={isSubscribed ? "text-aurora-amber" : "text-slate-700"}
+          glow={isSubscribed ? "shadow-neon-amber" : ""}
         />
         <InsightCard
-          label="Teaching Index"
-          value={`${stats.participation}% Efficiency`}
-          icon={<Zap size={24} />}
-          color={isSubscribed ? "text-aurora-violet" : "text-slate-700"}
-          glow={isSubscribed ? "shadow-neon-violet" : ""}
+          label="On-Site Today"
+          value={`${stats.present} Students`}
+          subValue={`${stats.absent} Absentees Flagged`}
+          icon={<CheckSquare size={24} />}
+          color={isSubscribed ? "text-aurora-emerald" : "text-slate-700"}
+          glow={isSubscribed ? "shadow-neon-emerald" : ""}
+        />
+        <InsightCard
+          label="Instructional Flow"
+          value={`${stats.participation}%`}
+          subValue="Daily Syllabus Progress"
+          icon={<TrendingUp size={24} />}
+          color={isSubscribed ? "text-aurora-rose" : "text-slate-700"}
+          glow={isSubscribed ? "shadow-neon-rose" : ""}
         />
       </div>
 
@@ -460,11 +509,12 @@ const AdminDashboard = () => {
   );
 };
 
-const InsightCard = ({ label, value, icon, color, glow }) => (
+const InsightCard = ({ label, value, subValue, icon, color, glow }) => (
   <div className={`glass-card p-6 lg:p-8 flex items-center justify-between group hover:border-white/20 transition-all ${glow}`}>
     <div className="min-w-0">
       <p className="text-[9px] lg:text-[11px] font-black text-slate-500 uppercase tracking-[0.2em] mb-2 truncate">{label}</p>
       <p className={`text-xl lg:text-2xl font-black tracking-tight ${color} truncate`}>{value}</p>
+      {subValue && <p className="text-[8px] lg:text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1 truncate">{subValue}</p>}
     </div>
     <div
       className={`w-12 h-12 lg:w-14 lg:h-14 bg-white/5 rounded-2xl flex items-center justify-center transition-transform duration-500 group-hover:scale-110 shrink-0 ${color}`}

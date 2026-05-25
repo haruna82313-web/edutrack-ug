@@ -28,12 +28,14 @@ const Students = () => {
   const [showDetails, setShowDetails] = useState(false);
   const [filterDate, setFilterDate] = useState('');
   const [filterRole, setFilterRole] = useState('all'); // all, leaders, non_leaders, or specific role value
+  const [filterGender, setFilterGender] = useState('all');
   
   const [formData, setFormData] = useState({
     fullName: '',
     parentPhone: '',
     classId: '',
-    leadershipRole: ''
+    leadershipRole: '',
+    gender: ''
   });
   const [editing, setEditing] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -92,9 +94,14 @@ const Students = () => {
         : filterRole === 'non_leaders' 
           ? !student.leadership_role 
           : student.leadership_role === filterRole;
+
+    const matchesGender = filterGender === 'all' || student.gender === filterGender;
     
-    return matchesSearch && matchesDate && matchesRole;
+    return matchesSearch && matchesDate && matchesRole && matchesGender;
   });
+
+  const maleCount = filteredStudents.filter(s => s.gender === 'Male').length;
+  const femaleCount = filteredStudents.filter(s => s.gender === 'Female').length;
 
   const handleAddStudent = async (e) => {
     e.preventDefault();
@@ -107,11 +114,12 @@ const Students = () => {
         parent_phone: formData.parentPhone,
         class_id: formData.classId,
         school_id: profile.school_id,
-        leadership_role: formData.leadershipRole || null
+        leadership_role: formData.leadershipRole || null,
+        gender: formData.gender || null
       }]);
 
       if (error) throw error;
-      setFormData({ fullName: '', parentPhone: '', classId: '', leadershipRole: '' });
+      setFormData({ fullName: '', parentPhone: '', classId: '', leadershipRole: '', gender: '' });
       fetchData();
     } catch (error) {
       alert(error.message);
@@ -140,7 +148,8 @@ const Students = () => {
           full_name: editing.full_name.trim(),
           parent_phone: editing.parent_phone.trim(),
           class_id: editing.class_id,
-          leadership_role: editing.leadership_role || null
+          leadership_role: editing.leadership_role || null,
+          gender: editing.gender || null
         })
         .eq('id', editing.id);
       if (error) throw error;
@@ -190,6 +199,18 @@ const Students = () => {
             </select>
           </div>
           <div className="relative flex items-center bg-slate-900 px-4 py-2 rounded-2xl shadow-xl border border-slate-800">
+            <Users className="text-slate-500 mr-2" size={16} />
+            <select
+              className="bg-transparent border-none text-[10px] font-black uppercase tracking-widest text-slate-300 focus:ring-0 cursor-pointer outline-none"
+              value={filterGender}
+              onChange={(e) => setFilterGender(e.target.value)}
+            >
+              <option value="all" className="bg-slate-900 text-white">All Genders</option>
+              <option value="Male" className="bg-slate-900 text-white">Male</option>
+              <option value="Female" className="bg-slate-900 text-white">Female</option>
+            </select>
+          </div>
+          <div className="relative flex items-center bg-slate-900 px-4 py-2 rounded-2xl shadow-xl border border-slate-800">
             <input
               type="date"
               className="bg-transparent border-none text-xs font-bold text-slate-300 focus:ring-0 cursor-pointer"
@@ -205,11 +226,16 @@ const Students = () => {
               </button>
             )}
           </div>
-          <div className="flex items-center gap-3 bg-slate-900 px-4 py-2 rounded-2xl shadow-xl border border-slate-800">
-            <Users className="text-primary-400" size={18} />
-            <span className="text-xs lg:text-sm font-bold text-slate-300">
-              {searchTerm || filterDate ? `${filteredStudents.length} Found` : `${students.length} Enrolled`}
-            </span>
+          <div className="flex items-center gap-4 bg-slate-900 px-5 py-2.5 rounded-2xl shadow-xl border border-slate-800 self-start">
+            <div className="flex items-center gap-2">
+              <Users className="text-primary-400" size={18} />
+              <span className="text-xs lg:text-sm font-bold text-slate-100">{filteredStudents.length}</span>
+            </div>
+            <div className="w-[1px] h-4 bg-slate-800"></div>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-black text-blue-400 uppercase tracking-widest">M: {maleCount}</span>
+              <span className="text-[10px] font-black text-rose-400 uppercase tracking-widest">F: {femaleCount}</span>
+            </div>
           </div>
         </div>
       </div>
@@ -272,6 +298,17 @@ const Students = () => {
               </option>
             ))}
           </SelectField>
+          <SelectField
+            icon={Users}
+            value={formData.gender}
+            onChange={(e) => setFormData({ ...formData, gender: e.target.value })}
+            required
+            className="text-sm lg:text-base"
+          >
+            <option value="">Select Gender</option>
+            <option value="Male">Male</option>
+            <option value="Female">Female</option>
+          </SelectField>
           <button 
             type="submit" 
             disabled={adding}
@@ -324,9 +361,16 @@ const Students = () => {
                             {student.leadership_role ? <Star size={16} /> : student.full_name.substring(0, 1).toUpperCase()}
                           </div>
                           <div className="flex flex-col min-w-0">
-                            <span className="font-black text-slate-200 tracking-tight truncate max-w-[200px]" title={student.full_name}>
-                              {student.full_name}
-                            </span>
+                            <div className="flex items-center gap-2">
+                              <span className="font-black text-slate-200 tracking-tight truncate max-w-[200px]" title={student.full_name}>
+                                {student.full_name}
+                              </span>
+                              {student.gender && (
+                                <span className={`text-[8px] font-black px-1.5 py-0.5 rounded uppercase tracking-tighter ${student.gender === 'Male' ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20' : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'}`}>
+                                  {student.gender === 'Male' ? 'M' : 'F'}
+                                </span>
+                              )}
+                            </div>
                             {student.leadership_role && (
                               <span className="text-[9px] font-black text-aurora-amber uppercase tracking-widest flex items-center gap-1">
                                 <ShieldCheck size={10} /> {LEADERSHIP_ROLES.find(r => r.value === student.leadership_role)?.label}
@@ -374,7 +418,14 @@ const Students = () => {
                         {student.leadership_role ? <Star size={16} /> : student.full_name.substring(0, 1).toUpperCase()}
                       </div>
                       <div className="min-w-0 flex-1">
-                        <h3 className="font-black text-slate-100 tracking-tight truncate text-sm leading-none" title={student.full_name}>{student.full_name}</h3>
+                        <div className="flex items-center gap-2">
+                          <h3 className="font-black text-slate-100 tracking-tight truncate text-sm leading-none" title={student.full_name}>{student.full_name}</h3>
+                          {student.gender && (
+                            <span className={`text-[7px] font-black px-1 py-0.5 rounded uppercase tracking-tighter ${student.gender === 'Male' ? 'bg-blue-500/10 text-blue-400' : 'bg-rose-500/10 text-rose-400'}`}>
+                              {student.gender === 'Male' ? 'M' : 'F'}
+                            </span>
+                          )}
+                        </div>
                         <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
                           <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-slate-950 text-slate-500 text-[8px] font-black uppercase tracking-wider border border-slate-800">
                             {student.classes?.name || 'Unassigned'}
@@ -460,6 +511,17 @@ const Students = () => {
               {role.label}
             </option>
           ))}
+        </SelectField>
+        <SelectField
+          label="Gender"
+          icon={Users}
+          value={editing?.gender || ''}
+          onChange={(e) => setEditing({ ...editing, gender: e.target.value })}
+          required
+        >
+          <option value="">Select Gender</option>
+          <option value="Male">Male</option>
+          <option value="Female">Female</option>
         </SelectField>
         {classes.length === 0 && (
           <p className="text-[10px] text-aurora-amber font-black uppercase tracking-widest">

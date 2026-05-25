@@ -29,6 +29,30 @@ const PolicyViewerModal = ({ isOpen, onClose, schoolId }) => {
       // Define system defaults as requested by the user
       const systemDefaults = [
         {
+          policy_type: 'general_rules',
+          content: `Welcome to the official Institutional Charter. These guidelines are established to maintain the high standards of discipline, academic excellence, and moral integrity that define our educational community in accordance with the Ministry of Education and Sports standards in Uganda.
+
+1. ACADEMIC INTEGRITY AND DILIGENCE: Students are expected to prioritize their studies above all other activities. Attendance at all scheduled lessons, prep sessions, and examinations is mandatory. Academic dishonesty, including cheating in exams or plagiarism, is strictly prohibited and may lead to immediate suspension or expulsion.
+
+2. UNIFORM AND PERSONAL GROOMING: The school uniform is a symbol of our identity and must be worn with pride and neatness. For boys, hair must be kept short and neat (level 1 or 2). For girls, hair should be neatly braided or kept short as per specific school regulations. No jewelry is allowed except for simple stud earrings for girls. Uniforms must be clean, pressed, and worn in their entirety during school hours and school-related functions.
+
+3. PUNCTUALITY AND ATTENDANCE: The school day begins promptly at 7:30 AM. All students must be within the school premises by this time. Latecomers will be subject to disciplinary action. Any absence must be communicated by the parent or guardian in writing or via the EduTrack portal. A minimum attendance of 90% is required for a student to be eligible for end-of-term examinations.
+
+4. CONDUCT AND DISCIPLINE: We uphold a zero-tolerance policy towards bullying, physical fighting, and use of abusive language. Respect for teachers, non-teaching staff, and fellow students is paramount. Students must adhere to the 'Speak English' policy within the school premises to enhance linguistic proficiency.
+
+5. PROHIBITED ITEMS: Students are strictly forbidden from bringing mobile phones, electronic gadgets, unauthorized medicines, or any form of contraband (alcohol, cigarettes, drugs) to school. Discovery of such items will result in immediate confiscation and severe disciplinary measures.
+
+6. SCHOOL PROPERTY: Students are custodians of the school's facilities. Any willful damage to school property, including furniture, laboratory equipment, or library books, will be repaired or replaced at the cost of the parent/guardian.
+
+7. PARENTAL ENGAGEMENT: Parents are our primary partners. It is mandatory for parents to attend all scheduled Parent-Teacher Association (PTA) meetings and Visitation Days. Parents must use the EduTrack portal regularly to monitor their child's performance and attendance.
+
+8. FEES AND DUES: All school fees must be paid in full at the beginning of each term. Students with outstanding balances may be asked to return home until payments are settled. We encourage the use of bank drafts or digital payment systems as per school policy.
+
+9. CO-CURRICULAR PARTICIPATION: Education at our institution is holistic. Every student is encouraged to participate in at least one sport and one club (e.g., Debating, Scripture Union, Wildlife Club).
+
+By enrolling your child in this institution, you agree to uphold and support these regulations to ensure a harmonious and productive learning environment.`
+        },
+        {
           policy_type: 'privacy_policy',
           content: `EduTrack Guardian is committed to protecting the privacy and security of your family's educational data. We understand that student records, academic performance, and attendance logs are highly sensitive pieces of information. This Privacy Policy outlines how we handle data within the Guardian Node to ensure complete confidentiality and security.
 

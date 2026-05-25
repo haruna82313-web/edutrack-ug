@@ -1,7 +1,22 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
-import { UserPlus, Clock, Mail, CheckCircle, Loader2, UserCheck, ShieldCheck, Search, Calendar } from 'lucide-react';
+import { 
+  UserPlus, 
+  Clock, 
+  Mail, 
+  CheckCircle, 
+  Loader2, 
+  UserCheck, 
+  ShieldCheck, 
+  Search, 
+  Calendar, 
+  Users, 
+  User,
+  MoreVertical,
+  Edit2,
+  Trash2
+} from 'lucide-react';
 import RowActions from '../../components/admin/RowActions';
 import EditModal from '../../components/admin/EditModal';
 import { deleteTeacherInvite } from '../../lib/adminCrud';
@@ -9,22 +24,28 @@ import { deleteTeacherInvite } from '../../lib/adminCrud';
 const Teachers = () => {
   const { user } = useAuth();
   const [teachers, setTeachers] = useState([]);
-  const [formData, setFormData] = useState({ fullName: '', email: '' });
+  const [formData, setFormData] = useState({ fullName: '', email: '', gender: '' });
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
   const [schoolId, setSchoolId] = useState(null);
   const [editing, setEditing] = useState(null);
   const [saving, setSaving] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [filterGender, setFilterGender] = useState('all');
 
   const filteredTeachers = teachers.filter(t => {
     const query = searchQuery.toLowerCase();
-    return (
+    const matchesSearch = (
       t.full_name?.toLowerCase().includes(query) ||
       t.email?.toLowerCase().includes(query) ||
       t.created_at?.includes(query)
     );
+    const matchesGender = filterGender === 'all' || t.gender === filterGender;
+    return matchesSearch && matchesGender;
   });
+
+  const maleCount = filteredTeachers.filter(t => t.gender === 'Male').length;
+  const femaleCount = filteredTeachers.filter(t => t.gender === 'Female').length;
 
   const fetchTeachers = async (sid) => {
     try {
@@ -67,7 +88,8 @@ const Teachers = () => {
       const { error } = await supabase.from('teacher_invites').insert([{ 
         full_name: formData.fullName, 
         email: formData.email.toLowerCase().trim(),
-        school_id: profile.school_id 
+        school_id: profile.school_id,
+        gender: formData.gender || null
       }]);
 
       if (error) {
@@ -76,7 +98,7 @@ const Teachers = () => {
         return;
       }
 
-      setFormData({ fullName: '', email: '' });
+      setFormData({ fullName: '', email: '', gender: '' });
       fetchTeachers();
     } catch (error) {
       alert("Error: " + error.message);
@@ -95,21 +117,36 @@ const Teachers = () => {
     }
   };
 
-  const saveEditInvite = async () => {
-    if (!editing || editing.is_registered) return;
+  const saveEditTeacher = async () => {
+    if (!editing) return;
     setSaving(true);
     try {
-      const { error } = await supabase
-        .from('teacher_invites')
-        .update({
-          full_name: editing.full_name.trim(),
-          email: editing.email.toLowerCase().trim(),
-        })
-        .eq('email', editing.originalEmail)
-        .eq('school_id', schoolId);
-      if (error) throw error;
+      if (editing.is_registered) {
+        // Update registered teacher in users table
+        const { error } = await supabase
+          .from('users')
+          .update({
+            full_name: editing.full_name.trim(),
+            gender: editing.gender || null
+          })
+          .eq('email', editing.email)
+          .eq('school_id', schoolId);
+        if (error) throw error;
+      } else {
+        // Update invited teacher in teacher_invites table
+        const { error } = await supabase
+          .from('teacher_invites')
+          .update({
+            full_name: editing.full_name.trim(),
+            email: editing.email.toLowerCase().trim(),
+            gender: editing.gender || null
+          })
+          .eq('email', editing.originalEmail)
+          .eq('school_id', schoolId);
+        if (error) throw error;
+      }
       setEditing(null);
-      fetchTeachers();
+      fetchTeachers(schoolId);
     } catch (error) {
       alert('Update failed: ' + error.message);
     } finally {
@@ -136,11 +173,28 @@ const Teachers = () => {
             />
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-primary-400 transition-colors" size={18} />
           </div>
-          <div className="flex items-center gap-3 bg-slate-900 px-4 py-2 rounded-2xl shadow-xl border border-slate-800 self-start">
-            <UserCheck className="text-primary-400" size={18} />
-            <span className="text-xs lg:text-sm font-bold text-slate-300">
-              {searchQuery ? `${filteredTeachers.length} Found` : `${teachers.length} Authorized`}
-            </span>
+          <div className="relative flex items-center bg-slate-900 px-4 py-2 rounded-2xl shadow-xl border border-slate-800">
+            <Users className="text-slate-500 mr-2" size={16} />
+            <select
+              className="bg-transparent border-none text-[10px] font-black uppercase tracking-widest text-slate-300 focus:ring-0 cursor-pointer outline-none"
+              value={filterGender}
+              onChange={(e) => setFilterGender(e.target.value)}
+            >
+              <option value="all" className="bg-slate-900 text-white">All Staff</option>
+              <option value="Male" className="bg-slate-900 text-white">Males Only</option>
+              <option value="Female" className="bg-slate-900 text-white">Females Only</option>
+            </select>
+          </div>
+          <div className="flex items-center gap-4 bg-slate-900 px-5 py-2.5 rounded-2xl shadow-xl border border-slate-800 self-start">
+            <div className="flex items-center gap-2">
+              <UserCheck className="text-primary-400" size={18} />
+              <span className="text-xs lg:text-sm font-bold text-slate-100">{filteredTeachers.length}</span>
+            </div>
+            <div className="w-[1px] h-4 bg-slate-800"></div>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-black text-blue-400 uppercase tracking-widest">M: {maleCount}</span>
+              <span className="text-[10px] font-black text-rose-400 uppercase tracking-widest">F: {femaleCount}</span>
+            </div>
           </div>
         </div>
       </div>
@@ -169,6 +223,19 @@ const Teachers = () => {
               required
             />
             <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-600" size={18} />
+          </div>
+          <div className="relative">
+            <select
+              className="input-field pl-11 text-sm lg:text-base appearance-none"
+              value={formData.gender}
+              onChange={(e) => setFormData({...formData, gender: e.target.value})}
+              required
+            >
+              <option value="">Select Gender</option>
+              <option value="Male">Male</option>
+              <option value="Female">Female</option>
+            </select>
+            <Users className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-600" size={18} />
           </div>
           <button 
             type="submit" 
@@ -215,7 +282,16 @@ const Teachers = () => {
                           <div className="w-10 h-10 bg-primary-600/10 text-primary-400 rounded-xl flex items-center justify-center font-black text-xs shrink-0 group-hover:bg-primary-600 group-hover:text-white transition-all border border-primary-500/10 group-hover:shadow-glow">
                             {teacher.full_name.substring(0, 1).toUpperCase()}
                           </div>
-                          <span className="font-black text-slate-200 tracking-tight">{teacher.full_name}</span>
+                          <div className="flex flex-col">
+                            <div className="flex items-center gap-2">
+                              <span className="font-black text-slate-200 tracking-tight">{teacher.full_name}</span>
+                              {teacher.gender && (
+                                <span className={`text-[8px] font-black px-1.5 py-0.5 rounded uppercase tracking-tighter ${teacher.gender === 'Male' ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20' : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'}`}>
+                                  {teacher.gender === 'Male' ? 'M' : 'F'}
+                                </span>
+                              )}
+                            </div>
+                          </div>
                         </div>
                       </td>
                       <td className="px-8 py-6">
@@ -230,12 +306,13 @@ const Teachers = () => {
                       </td>
                       <td className="px-8 py-6 text-right">
                         <RowActions
-                          onEdit={!teacher.is_registered ? () => setEditing({
+                          onEdit={() => setEditing({
                             originalEmail: teacher.email,
                             full_name: teacher.full_name,
                             email: teacher.email,
-                            is_registered: false,
-                          }) : undefined}
+                            gender: teacher.gender,
+                            is_registered: teacher.is_registered,
+                          })}
                           onDelete={!teacher.is_registered ? () => handleDeleteInvite(teacher.email) : undefined}
                           deleteDisabled={teacher.is_registered}
                           deleteTitle={teacher.is_registered ? 'Active teachers cannot be removed here' : 'Revoke invite'}
@@ -257,7 +334,14 @@ const Teachers = () => {
                         {teacher.full_name.substring(0, 1).toUpperCase()}
                       </div>
                       <div className="min-w-0 flex-1">
-                        <h3 className="font-black text-slate-100 tracking-tight truncate text-sm leading-none" title={teacher.full_name}>{teacher.full_name}</h3>
+                        <div className="flex items-center gap-2">
+                          <h3 className="font-black text-slate-100 tracking-tight truncate text-sm leading-none" title={teacher.full_name}>{teacher.full_name}</h3>
+                          {teacher.gender && (
+                            <span className={`text-[8px] font-black px-1 py-0.5 rounded uppercase tracking-tighter ${teacher.gender === 'Male' ? 'bg-blue-500/10 text-blue-400' : 'bg-rose-500/10 text-rose-400'}`}>
+                              {teacher.gender === 'Male' ? 'M' : 'F'}
+                            </span>
+                          )}
+                        </div>
                         <div className="flex items-center gap-1.5 mt-1.5">
                           <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-wider border ${teacher.is_registered ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-amber-500/10 text-amber-400 border-amber-500/20'}`}>
                             {teacher.is_registered ? 'Active' : 'Awaiting Hub Connection'}
@@ -266,12 +350,13 @@ const Teachers = () => {
                       </div>
                     </div>
                     <RowActions
-                      onEdit={!teacher.is_registered ? () => setEditing({
+                      onEdit={() => setEditing({
                         originalEmail: teacher.email,
                         full_name: teacher.full_name,
                         email: teacher.email,
-                        is_registered: false,
-                      }) : undefined}
+                        gender: teacher.gender,
+                        is_registered: teacher.is_registered,
+                      })}
                       onDelete={!teacher.is_registered ? () => handleDeleteInvite(teacher.email) : undefined}
                       deleteDisabled={teacher.is_registered}
                     />
@@ -288,9 +373,36 @@ const Teachers = () => {
         )}
       </div>
 
-      <EditModal open={!!editing} title="Edit staff invite" onClose={() => setEditing(null)} onSave={saveEditInvite} saving={saving}>
-        <input className="input-field w-full" value={editing?.full_name || ''} onChange={(e) => setEditing({ ...editing, full_name: e.target.value })} />
-        <input type="email" className="input-field w-full" value={editing?.email || ''} onChange={(e) => setEditing({ ...editing, email: e.target.value })} />
+      <EditModal open={!!editing} title={editing?.is_registered ? "Edit Active Staff" : "Edit Staff Invite"} onClose={() => setEditing(null)} onSave={saveEditTeacher} saving={saving}>
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Full Name</label>
+            <input className="input-field w-full" value={editing?.full_name || ''} onChange={(e) => setEditing({ ...editing, full_name: e.target.value })} />
+          </div>
+          <div className="space-y-2">
+            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Email Address</label>
+            <input 
+              type="email" 
+              className={`input-field w-full ${editing?.is_registered ? 'opacity-50 cursor-not-allowed' : ''}`} 
+              value={editing?.email || ''} 
+              onChange={(e) => !editing?.is_registered && setEditing({ ...editing, email: e.target.value })}
+              readOnly={editing?.is_registered}
+            />
+            {editing?.is_registered && <p className="text-[8px] text-amber-500 uppercase font-black">Registered email cannot be changed</p>}
+          </div>
+          <div className="space-y-2">
+            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Gender</label>
+            <select
+              className="input-field w-full appearance-none"
+              value={editing?.gender || ''}
+              onChange={(e) => setEditing({ ...editing, gender: e.target.value })}
+            >
+              <option value="">Select Gender</option>
+              <option value="Male">Male</option>
+              <option value="Female">Female</option>
+            </select>
+          </div>
+        </div>
       </EditModal>
     </div>
   );

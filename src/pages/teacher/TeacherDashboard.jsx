@@ -20,6 +20,7 @@ const TeacherDashboard = () => {
   const [historyMarks, setHistoryMarks] = useState([]);
   const [filterDate, setFilterDate] = useState(new Date().toISOString().split('T')[0]);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [filterGender, setFilterGender] = useState('all');
   const [syllabusTopics, setSyllabusTopics] = useState([]);
   const [activeLesson, setActiveLesson] = useState(null);
   const [students, setStudents] = useState([]);
@@ -259,25 +260,34 @@ By continuing to use the EduTrack Staff Terminal, you acknowledge your responsib
     try {
       const { data: profile } = await supabase.from('users').select('school_id').eq('id', user.id).single();
       
-      const records = Object.entries(marks).map(([studentId, score]) => ({
-        student_id: studentId,
-        subject_id: selectedSubject,
-        teacher_id: user.id,
-        marks: parseFloat(score),
-        max_marks: 100,
-        school_id: profile.school_id,
-        year: 2026,
-        term: 'Term 1' // Default term
-      }));
+      const records = Object.entries(marks)
+        .filter(([_, score]) => score !== '' && !isNaN(parseFloat(score)))
+        .map(([studentId, score]) => ({
+          student_id: studentId,
+          subject_id: selectedSubject,
+          teacher_id: user.id,
+          marks: parseFloat(score),
+          max_marks: 100,
+          school_id: profile.school_id,
+          year: 2026,
+          term: 'Term 1' // Default term
+        }));
 
-      if (records.length === 0) return;
+      if (records.length === 0) {
+        alert("Please enter at least one valid score.");
+        setSubmittingMarks(false);
+        return;
+      }
 
       if (!isOnline) {
         queueOfflineAction('SUBMIT_MARKS', { records });
         alert("Working Offline: Marks saved locally and will sync later.");
       } else {
         const { error } = await supabase.from('student_marks').insert(records);
-        if (error) throw error;
+        if (error) {
+          console.error("Marks submission error:", error);
+          throw new Error(error.message || "Failed to submit marks to database");
+        }
         alert("Success: Marks submitted successfully!");
       }
       
@@ -323,10 +333,14 @@ By continuing to use the EduTrack Staff Terminal, you acknowledge your responsib
     }
 
     const { error } = await supabase.from('attendance').insert(records);
-    if (!error) {
+    if (error) {
+      console.error("Attendance submission error:", error);
+      alert("Error: " + (error.message || "Failed to finalize record"));
+    } else {
       await supabase.from('lessons').update({ status: 'completed' }).eq('id', activeLesson.id);
       setActiveLesson(null);
       fetchTeacherData();
+      alert("Success: Attendance finalized!");
     }
     setLoading(false);
   };
@@ -339,6 +353,12 @@ By continuing to use the EduTrack Staff Terminal, you acknowledge your responsib
   const isSubscribed = subscriptionStatus?.toLowerCase() === 'active';
 
   if (activeLesson) {
+    const filteredStudents = students.filter(s => filterGender === 'all' || s.gender === filterGender);
+    const presentMales = students.filter(s => s.gender === 'Male' && !absentees.includes(s.id)).length;
+    const presentFemales = students.filter(s => s.gender === 'Female' && !absentees.includes(s.id)).length;
+    const totalMales = students.filter(s => s.gender === 'Male').length;
+    const totalFemales = students.filter(s => s.gender === 'Female').length;
+
     return (
       <div className="min-h-screen bg-slate-950 font-sans p-4 lg:p-8 animate-in slide-in-from-right duration-500 text-slate-300">
         <div className="max-w-3xl mx-auto">
@@ -351,24 +371,48 @@ By continuing to use the EduTrack Staff Terminal, you acknowledge your responsib
           
           <div className="bg-slate-900 rounded-3xl lg:rounded-[2.5rem] p-6 lg:p-8 shadow-2xl border border-slate-800 mb-6 lg:mb-8 relative overflow-hidden">
             <div className="absolute top-0 right-0 w-32 h-32 bg-primary-600/10 rounded-bl-full pointer-events-none"></div>
-            <div className="flex items-center gap-4 mb-5 relative z-10">
-              <div className="w-12 h-12 lg:w-14 lg:h-14 bg-primary-600/10 text-primary-400 rounded-2xl flex items-center justify-center shrink-0 border border-primary-500/20 shadow-glow">
-                <ClipboardList size={24} />
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6 relative z-10">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 lg:w-14 lg:h-14 bg-primary-600/10 text-primary-400 rounded-2xl flex items-center justify-center shrink-0 border border-primary-500/20 shadow-glow">
+                  <ClipboardList size={24} />
+                </div>
+                <div className="min-w-0">
+                  <h2 className="text-xl lg:text-2xl font-black text-white tracking-tight truncate">{activeLesson.classes?.name}</h2>
+                  <p className="text-slate-500 font-bold text-[10px] lg:text-sm uppercase tracking-widest truncate">{activeLesson.subjects?.name}</p>
+                </div>
               </div>
-              <div className="min-w-0">
-                <h2 className="text-xl lg:text-2xl font-black text-white tracking-tight truncate">{activeLesson.classes?.name}</h2>
-                <p className="text-slate-500 font-bold text-[10px] lg:text-sm uppercase tracking-widest truncate">{activeLesson.subjects?.name}</p>
+
+              <div className="flex items-center gap-4 bg-slate-950/50 p-3 rounded-2xl border border-slate-800">
+                <div className="flex flex-col items-center px-3 border-r border-slate-800">
+                  <span className="text-[8px] font-black text-blue-400 uppercase tracking-widest mb-1">Males Present</span>
+                  <span className="text-lg font-black text-blue-400 leading-none">{presentMales}<span className="text-[10px] text-slate-600 ml-1">/{totalMales}</span></span>
+                </div>
+                <div className="flex flex-col items-center px-3">
+                  <span className="text-[8px] font-black text-rose-400 uppercase tracking-widest mb-1">Females Present</span>
+                  <span className="text-lg font-black text-rose-400 leading-none">{presentFemales}<span className="text-[10px] text-slate-600 ml-1">/{totalFemales}</span></span>
+                </div>
               </div>
             </div>
             
-            <div className="bg-rose-500/10 border border-rose-500/20 p-3 lg:p-4 rounded-2xl flex items-center gap-3 relative z-10 shadow-rose-glow">
-              <div className="w-2 h-2 bg-rose-500 rounded-full animate-pulse shrink-0"></div>
-              <p className="text-[10px] font-black text-rose-400 uppercase tracking-widest leading-tight">Mark students who are ABSENT</p>
+            <div className="bg-rose-500/10 border border-rose-500/20 p-3 lg:p-4 rounded-2xl flex items-center justify-between relative z-10 shadow-rose-glow mt-6">
+              <div className="flex items-center gap-3">
+                <div className="w-2 h-2 bg-rose-500 rounded-full animate-pulse shrink-0"></div>
+                <p className="text-[10px] font-black text-rose-400 uppercase tracking-widest leading-tight">Mark students who are ABSENT</p>
+              </div>
+              <select 
+                className="bg-slate-900/50 border border-rose-500/20 rounded-xl px-3 py-1 text-[9px] font-black text-rose-400 uppercase tracking-widest focus:outline-none"
+                value={filterGender}
+                onChange={(e) => setFilterGender(e.target.value)}
+              >
+                <option value="all">All Genders</option>
+                <option value="Male">Males Only</option>
+                <option value="Female">Females Only</option>
+              </select>
             </div>
           </div>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 lg:gap-4 mb-32">
-            {students.map(s => (
+            {filteredStudents.map(s => (
               <button 
                 key={s.id} 
                 onClick={() => setAbsentees(prev => prev.includes(s.id) ? prev.filter(id => id !== s.id) : [...prev, s.id])}
@@ -379,9 +423,16 @@ By continuing to use the EduTrack Staff Terminal, you acknowledge your responsib
                 }`}
               >
                 <div className="min-w-0">
-                  <span className={`block font-black tracking-tight text-sm lg:text-base truncate ${absentees.includes(s.id) ? 'text-rose-400' : 'text-slate-100'}`}>
-                    {s.full_name}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className={`block font-black tracking-tight text-sm lg:text-base truncate ${absentees.includes(s.id) ? 'text-rose-400' : 'text-slate-100'}`}>
+                      {s.full_name}
+                    </span>
+                    {s.gender && (
+                      <span className={`text-[8px] font-black px-1.5 py-0.5 rounded uppercase tracking-tighter ${s.gender === 'Male' ? 'bg-blue-500/10 text-blue-400' : 'bg-rose-500/10 text-rose-400'}`}>
+                        {s.gender === 'Male' ? 'M' : 'F'}
+                      </span>
+                    )}
+                  </div>
                   <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">
                     {absentees.includes(s.id) ? 'Absent' : 'Present'}
                   </span>
@@ -694,17 +745,36 @@ By continuing to use the EduTrack Staff Terminal, you acknowledge your responsib
 
               {students.length > 0 && (
                 <div className="bg-slate-900 rounded-3xl border border-slate-800 shadow-xl overflow-hidden">
-                  <div className="p-6 border-b border-slate-800 bg-slate-950/30">
+                  <div className="p-6 border-b border-slate-800 bg-slate-950/30 flex items-center justify-between">
                     <h3 className="text-xs font-black text-white uppercase tracking-widest">Marks Entry Matrix</h3>
+                    <select 
+                      className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-1 text-[9px] font-black text-slate-400 uppercase tracking-widest focus:outline-none"
+                      value={filterGender}
+                      onChange={(e) => setFilterGender(e.target.value)}
+                    >
+                      <option value="all">All Genders</option>
+                      <option value="Male">Males</option>
+                      <option value="Female">Females</option>
+                    </select>
                   </div>
                   <div className="divide-y divide-slate-800">
-                    {students.map(s => (
+                    {students.filter(s => filterGender === 'all' || s.gender === filterGender).map(s => (
                       <div key={s.id} className="p-4 lg:p-6 flex items-center justify-between gap-4 hover:bg-white/5 transition-colors">
                         <div className="flex items-center gap-4">
                           <div className="w-10 h-10 bg-primary-600/10 text-primary-400 rounded-xl flex items-center justify-center font-black text-xs">
                             {s.full_name.substring(0, 1).toUpperCase()}
                           </div>
-                          <span className="font-black text-slate-200 text-sm lg:text-base">{s.full_name}</span>
+                          <div className="flex flex-col">
+                            <div className="flex items-center gap-2">
+                              <span className="font-black text-slate-200 text-sm lg:text-base">{s.full_name}</span>
+                              {s.gender && (
+                                <span className={`text-[8px] font-black px-1.5 py-0.5 rounded uppercase tracking-tighter ${s.gender === 'Male' ? 'bg-blue-500/10 text-blue-400' : 'bg-rose-500/10 text-rose-400'}`}>
+                                  {s.gender === 'Male' ? 'M' : 'F'}
+                                </span>
+                              )}
+                            </div>
+                            <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest">{s.gender || 'Not Specified'}</span>
+                          </div>
                         </div>
                         <div className="flex items-center gap-3">
                           <input 

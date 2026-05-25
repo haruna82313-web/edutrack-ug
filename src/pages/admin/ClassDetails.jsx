@@ -24,6 +24,7 @@ const ClassDetails = () => {
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [showDetails, setShowDetails] = useState(false);
   const [filterDate, setFilterDate] = useState('');
+  const [filterGender, setFilterGender] = useState('all');
   const [stats, setStats] = useState({
     attendanceRate: 0,
     performance: 0,
@@ -124,6 +125,11 @@ const ClassDetails = () => {
     }
   };
 
+  const filteredStudents = students.filter(s => filterGender === 'all' || s.gender === filterGender);
+
+  const maleCount = filteredStudents.filter(s => s.gender === 'Male').length;
+  const femaleCount = filteredStudents.filter(s => s.gender === 'Female').length;
+
   if (loading) {
     return (
       <div className="h-[60vh] flex flex-col items-center justify-center">
@@ -153,8 +159,17 @@ const ClassDetails = () => {
               <h2 className="text-2xl lg:text-4xl font-black text-white tracking-tight truncate leading-tight">{classInfo?.name}</h2>
               <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 mt-1">
                 <span className="text-slate-400 font-black text-[10px] lg:text-sm flex items-center gap-1.5 uppercase tracking-wide">
-                  <Users size={14} lg:size={16} className="text-primary-500 shrink-0" /> {students.length} Enrolled
+                  <Users size={14} lg:size={16} className="text-primary-500 shrink-0" /> {filteredStudents.length} Enrolled
                 </span>
+                <span className="hidden sm:block w-1 h-1 bg-slate-800 rounded-full"></span>
+                <div className="flex items-center gap-3">
+                  <span className="text-[10px] lg:text-xs font-black text-blue-400 uppercase tracking-widest flex items-center gap-1">
+                    <div className="w-1.5 h-1.5 bg-blue-500 rounded-full"></div> M: {maleCount}
+                  </span>
+                  <span className="text-[10px] lg:text-xs font-black text-rose-400 uppercase tracking-widest flex items-center gap-1">
+                    <div className="w-1.5 h-1.5 bg-rose-500 rounded-full"></div> F: {femaleCount}
+                  </span>
+                </div>
                 <span className="hidden sm:block w-1 h-1 bg-slate-800 rounded-full"></span>
                 <span className="text-slate-400 font-black text-[10px] lg:text-sm flex items-center gap-1.5 uppercase tracking-wide">
                   <Calendar size={14} lg:size={16} className="text-primary-500 shrink-0" /> Active Cycle 2026
@@ -163,6 +178,18 @@ const ClassDetails = () => {
             </div>
           </div>
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4">
+            <div className="relative flex items-center bg-slate-900 px-4 py-2 rounded-2xl shadow-xl border border-slate-800">
+              <Users className="text-slate-500 mr-2" size={16} />
+              <select
+                className="bg-transparent border-none text-[10px] font-black uppercase tracking-widest text-slate-300 focus:ring-0 cursor-pointer outline-none"
+                value={filterGender}
+                onChange={(e) => setFilterGender(e.target.value)}
+              >
+                <option value="all" className="bg-slate-900 text-white">All Genders</option>
+                <option value="Male" className="bg-slate-900 text-white">Male</option>
+                <option value="Female" className="bg-slate-900 text-white">Female</option>
+              </select>
+            </div>
             <div className="relative flex items-center bg-slate-900 px-4 py-2 rounded-2xl shadow-xl border border-slate-800">
               <input
                 type="date"
@@ -249,14 +276,14 @@ const ClassDetails = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800">
-              {students.length === 0 ? (
+              {filteredStudents.length === 0 ? (
                 <tr>
                   <td colSpan="3" className="px-6 lg:px-8 py-20 text-center">
-                    <p className="text-slate-500 font-black uppercase tracking-widest text-[10px]">No students enrolled in this class yet.</p>
+                    <p className="text-slate-500 font-black uppercase tracking-widest text-[10px]">No students matching the criteria found.</p>
                   </td>
                 </tr>
               ) : (
-                students.map((student) => (
+                filteredStudents.map((student) => (
                   <tr key={student.id} className="hover:bg-slate-800/50 transition-colors group cursor-pointer" onClick={() => { setSelectedStudent(student); setShowDetails(true); }}>
                     <td className="px-6 lg:px-8 py-4 lg:py-5">
                       <div className="flex items-center gap-3 lg:gap-4">
