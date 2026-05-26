@@ -5,7 +5,7 @@ import { useOnlineStatus, queueOfflineAction, useOfflineSync } from '../../lib/o
 import { 
   LogOut, BookOpen, Clock, Star, Target, 
   CheckCircle2, XCircle, ChevronLeft, ListChecks,
-  Calendar, GraduationCap, Zap, User, ArrowRight,
+  Calendar, GraduationCap, Zap, User, ArrowRight, TrendingUp,
   ClipboardList, Loader2, WifiOff, CloudUpload, ShieldCheck, X, History, FileSpreadsheet, Quote
 } from 'lucide-react';
 
@@ -21,6 +21,7 @@ const TeacherDashboard = () => {
   const [filterDate, setFilterDate] = useState(new Date().toISOString().split('T')[0]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [filterGender, setFilterGender] = useState('all');
+  const [selectedHistorySubject, setSelectedHistorySubject] = useState('');
   const [syllabusTopics, setSyllabusTopics] = useState([]);
   const [activeLesson, setActiveLesson] = useState(null);
   const [students, setStudents] = useState([]);
@@ -82,22 +83,30 @@ By continuing to use the EduTrack Staff Terminal, you acknowledge your responsib
     }
   };
 
-  const fetchAttendanceHistory = async (classId, date) => {
+  const fetchAttendanceHistory = async (classId, date, subjectId = null) => {
     try {
       setHistoryLoading(true);
       // Determine if we should filter by class or if it's not present in the table
-      const { data, error } = await supabase
+      let query = supabase
         .from('attendance')
-        .select('*, students(full_name, class_id)')
+        .select('*, students(full_name, class_id), lessons(subject_id)')
         .gte('created_at', `${date}T00:00:00`)
         .lte('created_at', `${date}T23:59:59`);
 
+      const { data, error } = await query;
+
       if (error) throw error;
 
-      // Filter by class_id manually if the attendance table doesn't have it directly
-      const filteredData = classId 
-        ? data.filter(a => a.students?.class_id === classId)
-        : data;
+      // Filter by class_id and subject_id manually
+      let filteredData = data;
+      
+      if (classId) {
+        filteredData = filteredData.filter(a => a.students?.class_id === classId);
+      }
+      
+      if (subjectId) {
+        filteredData = filteredData.filter(a => a.lessons?.subject_id === subjectId);
+      }
 
       setHistoryAttendance(filteredData || []);
     } catch (error) {
@@ -133,11 +142,11 @@ By continuing to use the EduTrack Staff Terminal, you acknowledge your responsib
 
   useEffect(() => {
     if (activeTab === 'attendance_history' && selectedClass) {
-      fetchAttendanceHistory(selectedClass, filterDate);
+      fetchAttendanceHistory(selectedClass, filterDate, selectedHistorySubject);
     } else if (activeTab === 'marks_history' && selectedClass && selectedSubject) {
       fetchMarksHistory(selectedClass, selectedSubject, filterDate);
     }
-  }, [activeTab, selectedClass, selectedSubject, filterDate]);
+  }, [activeTab, selectedClass, selectedSubject, selectedHistorySubject, filterDate]);
 
   useEffect(() => {
     let subChannel;
@@ -836,7 +845,7 @@ By continuing to use the EduTrack Staff Terminal, you acknowledge your responsib
               <div className="glass-card p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div className="space-y-1">
                   <h3 className="text-xs font-black uppercase tracking-widest">Attendance Archive</h3>
-                  <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest">Select Class & Date to view logs</p>
+                  <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest">Select Class, Subject & Date to view logs</p>
                 </div>
                 <div className="flex flex-col sm:flex-row gap-3">
                   <select 
@@ -846,6 +855,14 @@ By continuing to use the EduTrack Staff Terminal, you acknowledge your responsib
                   >
                     <option value="">Select Class</option>
                     {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                  <select 
+                    className="bg-slate-950 border border-white/10 rounded-xl px-4 py-2 text-[10px] font-black uppercase tracking-widest text-white outline-none focus:border-emerald-500/50 transition-all"
+                    value={selectedHistorySubject}
+                    onChange={(e) => setSelectedHistorySubject(e.target.value)}
+                  >
+                    <option value="">Select Subject</option>
+                    {subjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                   </select>
                   <input 
                     type="date" 
@@ -870,7 +887,7 @@ By continuing to use the EduTrack Staff Terminal, you acknowledge your responsib
                 </div>
               ) : (
                 <div className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <div className="bg-emerald-500/10 border border-emerald-500/20 p-5 rounded-3xl text-center">
                       <p className="text-[8px] font-black text-emerald-500 uppercase tracking-widest mb-1">Attended</p>
                       <p className="text-2xl font-black text-emerald-400">{historyAttendance.filter(a => a.status === 'present').length}</p>
@@ -878,6 +895,12 @@ By continuing to use the EduTrack Staff Terminal, you acknowledge your responsib
                     <div className="bg-rose-500/10 border border-rose-500/20 p-5 rounded-3xl text-center">
                       <p className="text-[8px] font-black text-rose-500 uppercase tracking-widest mb-1">Missed</p>
                       <p className="text-2xl font-black text-rose-400">{historyAttendance.filter(a => a.status === 'absent').length}</p>
+                    </div>
+                    <div className="bg-primary-500/10 border border-primary-500/20 p-5 rounded-3xl text-center">
+                      <p className="text-[8px] font-black text-primary-500 uppercase tracking-widest mb-1">Attendance Rate</p>
+                      <p className="text-2xl font-black text-primary-400">
+                        {Math.round((historyAttendance.filter(a => a.status === 'present').length / historyAttendance.length) * 100)}%
+                      </p>
                     </div>
                   </div>
                   <div className="divide-y divide-white/5 bg-white/5 rounded-3xl border border-white/10 overflow-hidden">
@@ -947,6 +970,27 @@ By continuing to use the EduTrack Staff Terminal, you acknowledge your responsib
                 </div>
               ) : (
                 <div className="space-y-4">
+                  {/* Performance Summary Card */}
+                  <div className="bg-amber-500/10 border border-amber-500/20 p-6 rounded-3xl flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 bg-amber-500/20 rounded-2xl flex items-center justify-center text-amber-400">
+                        <TrendingUp size={24} />
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-black text-amber-500 uppercase tracking-widest">Subject Mastery</p>
+                        <h4 className="text-xl font-black text-white uppercase tracking-tight">
+                          {subjects.find(s => s.id === selectedSubject)?.name || 'Performance'} Index
+                        </h4>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-3xl font-black text-amber-400">
+                        {Math.round((historyMarks.reduce((acc, m) => acc + (parseFloat(m.marks) / parseFloat(m.max_marks)), 0) / historyMarks.length) * 100)}%
+                      </p>
+                      <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest">Class Average</p>
+                    </div>
+                  </div>
+
                   <div className="bg-white/5 rounded-3xl border border-white/10 overflow-hidden divide-y divide-white/5">
                     {historyMarks.map((m, idx) => (
                       <div key={idx} className="p-6 flex items-center justify-between hover:bg-white/5 transition-all group">

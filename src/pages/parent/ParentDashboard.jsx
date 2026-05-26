@@ -99,9 +99,12 @@ const ParentDashboard = () => {
         .from('student_marks')
         .select('*, subjects(name), users!student_marks_teacher_id_fkey(full_name)')
         .eq('student_id', studentId)
+        .eq('is_published', true)
         .order('created_at', { ascending: false });
 
-      if (date) {
+      // Only filter by date if specifically requested (optional for future use)
+      // For now, schools prefer seeing all academic data once published
+      if (date && activeView !== 'marks') {
         query = query.gte('created_at', `${date}T00:00:00`).lte('created_at', `${date}T23:59:59`);
       }
 
@@ -247,6 +250,7 @@ const ParentDashboard = () => {
         .from('student_marks')
         .select('*, subjects(name)')
         .eq('student_id', studentId)
+        .eq('is_published', true)
         .order('created_at', { ascending: true })
         .limit(10); // Increased limit for smarter analytics
 
@@ -298,8 +302,9 @@ const ParentDashboard = () => {
         .from('student_marks')
         .select('*, subjects(name)')
         .eq('student_id', studentId)
+        .eq('is_published', true)
         .order('created_at', { ascending: false })
-        .limit(3);
+        .limit(10); // Show more published marks in feed
 
       // 3. Combine into a timeline feed
       const newFeed = [
@@ -313,7 +318,8 @@ const ParentDashboard = () => {
         ...(marks?.map(m => ({
           type: 'mark',
           time: new Date(m.created_at),
-          title: `Scored ${m.marks}/${m.max_marks} in ${m.subjects?.name}`,
+          title: `Published: ${m.subjects?.name}`,
+          subtitle: `Score: ${m.marks}/${m.max_marks}`,
           status: 'academic',
           icon: <Star size={16} />
         })) || [])
@@ -462,12 +468,17 @@ const ParentDashboard = () => {
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
               {hubItems.map((item) => {
                 const Icon = item.icon;
+                const hasUpdates = item.label === 'Exam Marks' && detailedMarks.length > 0;
+                
                 return (
                   <button
                     key={item.label}
                     onClick={item.onClick}
-                    className={`aspect-square rounded-3xl border-2 flex flex-col items-center justify-center gap-3 transition-all duration-300 group bg-white/5 hover:bg-white/10 active:scale-95 ${item.color}`}
+                    className={`aspect-square rounded-3xl border-2 flex flex-col items-center justify-center gap-3 transition-all duration-300 group bg-white/5 hover:bg-white/10 active:scale-95 relative ${item.color}`}
                   >
+                    {hasUpdates && (
+                      <div className="absolute top-4 right-4 w-2 h-2 bg-amber-500 rounded-full animate-pulse shadow-glow"></div>
+                    )}
                     <div className="p-4 rounded-2xl bg-white/5 group-hover:rotate-6 group-hover:scale-110 transition-all duration-300">
                       <Icon size={24} />
                     </div>
@@ -478,6 +489,42 @@ const ParentDashboard = () => {
                 );
               })}
             </div>
+
+            {/* Smart Timeline Feed */}
+            {feed.length > 0 && (
+              <div className="space-y-6">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-500">Live Pulse</h3>
+                  <div className="h-[1px] flex-1 bg-white/5 mx-4"></div>
+                </div>
+                <div className="space-y-4">
+                  {feed.map((item, idx) => (
+                    <div key={idx} className="flex gap-4 group">
+                      <div className="flex flex-col items-center">
+                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center border transition-all ${
+                          item.type === 'attendance' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-amber-500/10 border-amber-500/20 text-amber-400'
+                        }`}>
+                          {item.icon}
+                        </div>
+                        {idx !== feed.length - 1 && <div className="w-[1px] flex-1 bg-white/5 my-2"></div>}
+                      </div>
+                      <div className="flex-1 pt-1 pb-6">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <h4 className="text-[11px] font-black uppercase tracking-widest text-slate-200">{item.title}</h4>
+                            {item.subtitle && <p className="text-[10px] font-black text-primary-400 mt-1 uppercase tracking-widest">{item.subtitle}</p>}
+                            <p className="text-[8px] font-black text-slate-600 mt-2 uppercase tracking-widest">
+                              {new Date(item.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} • {new Date(item.time).toLocaleDateString()}
+                            </p>
+                          </div>
+                          <ChevronRight size={14} className="text-slate-700 group-hover:text-white transition-colors" />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </>
         ) : (
           <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">

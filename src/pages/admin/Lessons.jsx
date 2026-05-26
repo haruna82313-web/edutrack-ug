@@ -410,9 +410,9 @@ const Lessons = () => {
         <input type="date" className="input-field w-full" value={editing?.lessonDate || ''} onChange={(e) => setEditing({ ...editing, lessonDate: e.target.value })} />
         <select className="input-field w-full appearance-none" value={editing?.teacherId || ''} onChange={(e) => setEditing({ ...editing, teacherId: e.target.value })}>
           <option value="">Unassigned</option>
-          {teachers.filter((t) => t.registered_id || t.id).map((t) => (
-            <option key={t.email} value={t.registered_id || t.id}>
-              {t.full_name} ({t.gender === 'Male' ? 'M' : 'F'})
+          {teachers.map((t) => (
+            <option key={t.email} value={t.registered_id || ''} disabled={!t.is_registered}>
+              {t.full_name} {!t.is_registered ? '(Invited - Pending Registration)' : `(${t.gender === 'Male' ? 'M' : 'F'})`}
             </option>
           ))}
         </select>
