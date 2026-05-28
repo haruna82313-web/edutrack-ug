@@ -29,7 +29,8 @@ BEGIN
     BEGIN
       project_url := 'https://' || (SELECT split_part(current_setting('request.headers', true)::jsonb->>'host', '.', 1) || '.supabase.co');
     EXCEPTION WHEN OTHERS THEN
-      project_url := 'https://your-project.supabase.co'; -- Fallback
+      -- Use a more robust fallback if headers are missing
+      project_url := 'https://' || current_setting('supabase.project_id', true) || '.supabase.co';
     END;
 
     PERFORM

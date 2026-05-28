@@ -2,6 +2,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import InstallPwa from './components/InstallPwa';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { HomeRedirect } from './components/auth/HomeRedirect';
+import { NotificationProvider } from './context/NotificationContext';
 
 // Layouts & Auth Pages
 import AdminLayout from './layouts/AdminLayout';
@@ -28,9 +29,10 @@ import ParentDashboard from './pages/parent/ParentDashboard';
 // --- MAIN APP COMPONENT ---
 function App() {
   return (
-    <Router>
-      <InstallPwa />
-      <Routes>
+    <NotificationProvider>
+      <Router>
+        <InstallPwa />
+        <Routes>
         {/* PUBLIC ACCESSIBLE ROUTES */}
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
@@ -135,6 +137,7 @@ function App() {
         <Route path="*" element={<Navigate to="/login" />} />
       </Routes>
     </Router>
+    </NotificationProvider>
   );
 }
 

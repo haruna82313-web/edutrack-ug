@@ -6,8 +6,11 @@ import EditModal from '../../components/admin/EditModal';
 import RowActions from '../../components/admin/RowActions';
 import { deleteLessonCascade } from '../../lib/adminCrud';
 
+import { useNotification } from '../../context/NotificationContext';
+
 const Lessons = () => {
   const { user } = useAuth();
+  const { showNotification } = useNotification();
   const [lessons, setLessons] = useState([]);
   const [teachers, setTeachers] = useState([]);
   const [subjects, setSubjects] = useState([]);
@@ -143,20 +146,22 @@ const Lessons = () => {
 
       setFormData({ teacherEmail: '', subjectId: '', classId: '', startTime: '', endTime: '' });
       fetchData(filterRange);
+      showNotification('Instructional node scheduled successfully!');
     } catch (err) {
-      alert("Scheduling error: " + err.message);
+      showNotification('Scheduling failure: ' + err.message, 'error');
     } finally {
       setScheduling(false);
     }
   };
 
   const deleteLesson = async (id) => {
-    if (!confirm('Delete this lesson and its attendance records?')) return;
+    if (!window.confirm('Are you sure you want to remove this session from the timeline?')) return;
     try {
       await deleteLessonCascade(id);
       fetchData(filterRange);
+      showNotification('Session purged from the timeline.');
     } catch (err) {
-      alert('Delete failed: ' + err.message);
+      showNotification('Purge failure: ' + err.message, 'error');
     }
   };
 

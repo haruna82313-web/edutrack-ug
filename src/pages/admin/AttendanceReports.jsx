@@ -11,13 +11,16 @@ const AttendanceReports = () => {
   const [customDate, setCustomDate] = useState(new Date().toISOString().split('T')[0]);
   const [activeTab, setActiveTab] = useState('intelligence'); // 'intelligence' or 'class_view'
   const [classes, setClasses] = useState([]);
+  const [subjects, setSubjects] = useState([]);
   const [selectedClass, setSelectedClass] = useState('');
+  const [selectedSubject, setSelectedSubject] = useState('');
   const [filterGender, setFilterGender] = useState('all');
   const [classAttendance, setClassAttendance] = useState([]);
 
   useEffect(() => {
     fetchReport(filterRange);
     fetchClasses();
+    fetchSubjects();
   }, []);
 
   const fetchClasses = async () => {
@@ -31,19 +34,37 @@ const AttendanceReports = () => {
     }
   };
 
-  const fetchClassAttendance = async (classId, date) => {
+  const fetchSubjects = async () => {
+    try {
+      const { data: profile } = await supabase.from('users').select('school_id').eq('id', user.id).single();
+      if (!profile?.school_id) return;
+      const { data } = await supabase.from('subjects').select('*').eq('school_id', profile.school_id).order('name');
+      setSubjects(data || []);
+    } catch (error) {
+      console.error('Error fetching subjects:', error);
+    }
+  };
+
+  const fetchClassAttendance = async (classId, date, subjectId = null) => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('attendance')
         .select(`
           status,
           created_at,
-          students!inner (id, full_name, class_id, gender)
+          students!inner (id, full_name, class_id, gender),
+          lessons!inner (id, subject_id, subjects(name))
         `)
         .eq('students.class_id', classId)
         .gte('created_at', `${date}T00:00:00`)
         .lte('created_at', `${date}T23:59:59`);
+
+      if (subjectId) {
+        query = query.eq('lessons.subject_id', subjectId);
+      }
+
+      const { data, error } = await query;
 
       if (error) throw error;
       setClassAttendance(data || []);
@@ -56,9 +77,9 @@ const AttendanceReports = () => {
 
   useEffect(() => {
     if (activeTab === 'class_view' && selectedClass && customDate) {
-      fetchClassAttendance(selectedClass, customDate);
+      fetchClassAttendance(selectedClass, customDate, selectedSubject);
     }
-  }, [activeTab, selectedClass, customDate]);
+  }, [activeTab, selectedClass, customDate, selectedSubject]);
 
   const fetchReport = async (range, date = customDate) => {
     setLoading(true);
@@ -321,14 +342,16 @@ const AttendanceReports = () => {
               {selectedClass && filteredClassAttendance.length > 0 && (
                 <div className="flex items-center gap-4 bg-slate-950/50 px-4 py-2 rounded-2xl border border-slate-800">
                   <div className="flex items-center gap-2 pr-4 border-r border-slate-800">
-                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total: {filteredClassAttendance.length}</span>
+                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                      Unique Students: {new Set(filteredClassAttendance.map(a => a.students?.id)).size}
+                    </span>
                   </div>
                   <div className="flex items-center gap-4">
                     <span className="text-[10px] font-black text-blue-400 uppercase tracking-widest flex items-center gap-1.5">
-                      <div className="w-1.5 h-1.5 bg-blue-500 rounded-full"></div> M: {filteredClassAttendance.filter(a => a.students?.gender === 'Male').length}
+                      <div className="w-1.5 h-1.5 bg-blue-500 rounded-full"></div> M: {new Set(filteredClassAttendance.filter(a => a.students?.gender === 'Male').map(a => a.students?.id)).size}
                     </span>
                     <span className="text-[10px] font-black text-rose-400 uppercase tracking-widest flex items-center gap-1.5">
-                      <div className="w-1.5 h-1.5 bg-rose-500 rounded-full"></div> F: {filteredClassAttendance.filter(a => a.students?.gender === 'Female').length}
+                      <div className="w-1.5 h-1.5 bg-rose-500 rounded-full"></div> F: {new Set(filteredClassAttendance.filter(a => a.students?.gender === 'Female').map(a => a.students?.id)).size}
                     </span>
                   </div>
                 </div>
@@ -342,6 +365,14 @@ const AttendanceReports = () => {
               >
                 <option value="">Choose Class</option>
                 {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+              <select 
+                className="bg-slate-950 border border-white/10 rounded-xl px-4 py-2.5 text-[10px] font-black uppercase tracking-widest text-white outline-none focus:border-primary-500/50 transition-all"
+                value={selectedSubject}
+                onChange={(e) => setSelectedSubject(e.target.value)}
+              >
+                <option value="">All Subjects</option>
+                {subjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
               </select>
               <input 
                 type="date" 
@@ -358,6 +389,7 @@ const AttendanceReports = () => {
                 <thead>
                   <tr className="bg-slate-950/50 border-b border-slate-800">
                     <th className="px-8 py-5 text-[10px] font-black text-slate-500 uppercase tracking-widest">Student Name</th>
+                    <th className="px-8 py-5 text-[10px] font-black text-slate-500 uppercase tracking-widest">Subject</th>
                     <th className="px-8 py-5 text-[10px] font-black text-slate-500 uppercase tracking-widest text-center">Status</th>
                     <th className="px-8 py-5 text-[10px] font-black text-slate-500 uppercase tracking-widest">Logged At</th>
                   </tr>
@@ -365,14 +397,14 @@ const AttendanceReports = () => {
                 <tbody className="divide-y divide-slate-800">
                   {loading ? (
                     <tr>
-                      <td colSpan="3" className="px-8 py-20 text-center">
+                      <td colSpan="4" className="px-8 py-20 text-center">
                         <Loader2 className="animate-spin text-primary-400 mx-auto mb-4" size={32} />
                         <p className="text-slate-600 font-bold uppercase tracking-widest text-[10px]">Retrieving Matrix...</p>
                       </td>
                     </tr>
                   ) : !selectedClass ? (
                     <tr>
-                      <td colSpan="3" className="px-8 py-20 text-center">
+                      <td colSpan="4" className="px-8 py-20 text-center">
                         <div className="w-16 h-16 bg-slate-950 rounded-full flex items-center justify-center mx-auto mb-4 border border-slate-800">
                           <Search size={32} className="text-slate-700" />
                         </div>
@@ -381,7 +413,7 @@ const AttendanceReports = () => {
                     </tr>
                   ) : filteredClassAttendance.length === 0 ? (
                     <tr>
-                      <td colSpan="3" className="px-8 py-20 text-center">
+                      <td colSpan="4" className="px-8 py-20 text-center">
                         <div className="w-16 h-16 bg-slate-950 rounded-full flex items-center justify-center mx-auto mb-4 border border-slate-800">
                           <Calendar size={32} className="text-slate-700" />
                         </div>
@@ -392,12 +424,12 @@ const AttendanceReports = () => {
                     filteredClassAttendance.map((row, i) => (
                       <tr key={i} className="hover:bg-white/5 transition-colors group">
                         <td className="px-8 py-6">
-                          <div className="flex items-center gap-4">
-                            <div className="w-10 h-10 bg-white/5 text-slate-400 rounded-xl flex items-center justify-center font-black text-xs border border-white/5 group-hover:bg-primary-600 group-hover:text-white transition-all">
+                          <div className="flex items-center gap-4 min-w-[200px]">
+                            <div className="w-10 h-10 bg-white/5 text-slate-400 rounded-xl flex items-center justify-center font-black text-xs border border-white/5 group-hover:bg-primary-600 group-hover:text-white transition-all shrink-0">
                               {row.students?.full_name.substring(0, 1).toUpperCase()}
                             </div>
-                            <div className="flex flex-col">
-                              <span className="font-black text-slate-200 tracking-tight">{row.students?.full_name}</span>
+                            <div className="flex flex-col min-w-0">
+                              <span className="font-black text-slate-200 tracking-tight whitespace-nowrap overflow-hidden text-ellipsis">{row.students?.full_name}</span>
                               {row.students?.gender && (
                                 <span className={`text-[8px] font-black uppercase tracking-widest ${row.students.gender === 'Male' ? 'text-blue-400' : 'text-rose-400'}`}>
                                   {row.students.gender}
@@ -405,6 +437,11 @@ const AttendanceReports = () => {
                               )}
                             </div>
                           </div>
+                        </td>
+                        <td className="px-8 py-6">
+                          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-950 text-primary-400 text-[9px] font-black uppercase tracking-widest border border-primary-500/20 whitespace-nowrap">
+                            {row.lessons?.subjects?.name || 'N/A'}
+                          </span>
                         </td>
                         <td className="px-8 py-6 text-center">
                           <span className={`inline-flex px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border ${
@@ -415,7 +452,7 @@ const AttendanceReports = () => {
                             {row.status}
                           </span>
                         </td>
-                        <td className="px-8 py-6 text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+                        <td className="px-8 py-6 text-[10px] font-bold text-slate-500 uppercase tracking-widest whitespace-nowrap">
                           {new Date(row.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </td>
                       </tr>

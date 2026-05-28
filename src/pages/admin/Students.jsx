@@ -9,6 +9,8 @@ import SelectField from '../../components/admin/SelectField';
 import { ShieldCheck, Star } from 'lucide-react';
 import StudentDetailsModal from '../../components/admin/StudentDetailsModal';
 
+import { useNotification } from '../../context/NotificationContext';
+
 const LEADERSHIP_ROLES = [
   { value: 'class_rep', label: 'Class Representative' },
   { value: 'prefect', label: 'Prefect' },
@@ -19,6 +21,7 @@ const LEADERSHIP_ROLES = [
 
 const Students = () => {
   const { user } = useAuth();
+  const { showNotification } = useNotification();
   const [students, setStudents] = useState([]);
   const [classes, setClasses] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -119,22 +122,25 @@ const Students = () => {
       }]);
 
       if (error) throw error;
+      
       setFormData({ fullName: '', parentPhone: '', classId: '', leadershipRole: '', gender: '' });
       fetchData();
+      showNotification('Student profile activated successfully!');
     } catch (error) {
-      alert(error.message);
+      showNotification('Activation failure: ' + error.message, 'error');
     } finally {
       setAdding(false);
     }
   };
 
   const deleteStudent = async (id) => {
-    if (!confirm('Remove this student and their attendance history?')) return;
+    if (!window.confirm('Are you sure you want to remove this student? All academic records will be permanently deleted.')) return;
     try {
       await deleteStudentCascade(id);
       fetchData();
+      showNotification('Student record purged from the matrix.');
     } catch (error) {
-      alert('Delete failed: ' + error.message);
+      showNotification('Purge failure: ' + error.message, 'error');
     }
   };
 

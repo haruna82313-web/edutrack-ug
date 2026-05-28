@@ -21,8 +21,11 @@ import RowActions from '../../components/admin/RowActions';
 import EditModal from '../../components/admin/EditModal';
 import { deleteTeacherInvite } from '../../lib/adminCrud';
 
+import { useNotification } from '../../context/NotificationContext';
+
 const Teachers = () => {
   const { user } = useAuth();
+  const { showNotification } = useNotification();
   const [teachers, setTeachers] = useState([]);
   const [formData, setFormData] = useState({ fullName: '', email: '', gender: '' });
   const [loading, setLoading] = useState(true);
@@ -93,27 +96,29 @@ const Teachers = () => {
       }]);
 
       if (error) {
-        if (error.code === '23505') alert('Email already authorized!');
+        if (error.code === '23505') showNotification('Email already authorized!', 'error');
         else throw error;
         return;
       }
 
       setFormData({ fullName: '', email: '', gender: '' });
-      fetchTeachers();
+      fetchTeachers(schoolId);
+      showNotification('Teacher node authorized successfully!');
     } catch (error) {
-      alert("Error: " + error.message);
+      showNotification('Authorization failure: ' + error.message, 'error');
     } finally {
       setAdding(false);
     }
   };
 
   const handleDeleteInvite = async (email) => {
-    if (!confirm('Revoke access for this email?')) return;
+    if (!window.confirm('Are you sure you want to revoke this teacher\'s access? All instructional history will be archived.')) return;
     try {
       await deleteTeacherInvite(email, schoolId);
-      fetchTeachers();
+      fetchTeachers(schoolId);
+      showNotification('Staff node deactivated successfully.');
     } catch (error) {
-      alert('Delete failed: ' + error.message);
+      showNotification('Deactivation failure: ' + error.message, 'error');
     }
   };
 

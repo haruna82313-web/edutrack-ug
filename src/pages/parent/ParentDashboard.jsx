@@ -11,9 +11,11 @@ import PolicyViewerModal from '../../components/parent/PolicyViewerModal';
 import CircularViewerModal from '../../components/parent/CircularViewerModal';
 import PerformanceChart from '../../components/parent/PerformanceChart';
 import { subscribeUserToPush } from '../../lib/pushNotifications';
+import { useNotification } from '../../context/NotificationContext';
 
 const ParentDashboard = () => {
   const { profile, refreshProfile } = useAuth();
+  const { showNotification } = useNotification();
   const [students, setStudents] = useState([]);
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -161,7 +163,7 @@ const ParentDashboard = () => {
       icon: Star, 
       onClick: () => {
         if (!schoolSettings.marks_sharing_enabled) {
-          alert('Academic scores are currently restricted by the school administration.');
+          showNotification('Academic scores are currently restricted by the school administration.', 'info');
           return;
         }
         setFilterDate(new Date().toISOString().split('T')[0]);

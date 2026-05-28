@@ -8,8 +8,11 @@ import {
   X, Filter, LayoutGrid, List
 } from 'lucide-react';
 
+import { useNotification } from '../../context/NotificationContext';
+
 const MarksReports = () => {
   const { user } = useAuth();
+  const { showNotification } = useNotification();
   const [marksData, setMarksData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filterRange, setFilterRange] = useState('today');
@@ -19,16 +22,10 @@ const MarksReports = () => {
   const [isPushing, setIsPushing] = useState(false);
   const [viewMode, setViewMode] = useState('grouped'); // 'grouped' or 'list'
   const [selectedGroup, setSelectedGroup] = useState(null);
-  const [notification, setNotification] = useState(null);
 
   useEffect(() => {
     fetchMarks(filterRange);
   }, []);
-
-  const showNotification = (message, type = 'success') => {
-    setNotification({ message, type });
-    setTimeout(() => setNotification(null), 5000);
-  };
 
   const fetchMarks = async (range, date = customDate) => {
     setLoading(true);
@@ -199,18 +196,6 @@ const MarksReports = () => {
 
   return (
     <div className="space-y-6 lg:space-y-10 animate-in fade-in slide-in-from-bottom-6 duration-700 text-slate-300 relative">
-      {/* Notification Banner */}
-      {notification && (
-        <div className={`fixed top-24 left-1/2 -translate-x-1/2 z-[100] px-6 py-3 rounded-2xl border shadow-2xl flex items-center gap-3 animate-in slide-in-from-top-4 duration-300 ${
-          notification.type === 'error' ? 'bg-rose-500/20 border-rose-500/50 text-rose-400' : 
-          notification.type === 'info' ? 'bg-blue-500/20 border-blue-500/50 text-blue-400' :
-          'bg-emerald-500/20 border-emerald-500/50 text-emerald-400'
-        }`}>
-          {notification.type === 'error' ? <X size={18} /> : <CheckCircle2 size={18} />}
-          <span className="text-[10px] font-black uppercase tracking-widest">{notification.message}</span>
-        </div>
-      )}
-
       {/* Header */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
         <div>

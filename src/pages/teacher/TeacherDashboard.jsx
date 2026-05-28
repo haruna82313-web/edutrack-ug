@@ -9,8 +9,11 @@ import {
   ClipboardList, Loader2, WifiOff, CloudUpload, ShieldCheck, X, History, FileSpreadsheet, Quote
 } from 'lucide-react';
 
+import { useNotification } from '../../context/NotificationContext';
+
 const TeacherDashboard = () => {
   const { user } = useAuth();
+  const { showNotification } = useNotification();
   const isOnline = useOnlineStatus();
   const [activeTab, setActiveTab] = useState('home'); 
   const [lessons, setLessons] = useState([]);
@@ -337,19 +340,19 @@ By continuing to use the EduTrack Staff Terminal, you acknowledge your responsib
       queueOfflineAction('MARK_ATTENDANCE', { records, lessonId: activeLesson.id });
       setActiveLesson(null);
       setLoading(false);
-      alert("Working Offline: Your attendance record has been saved locally and will sync when internet returns.");
+      showNotification("Working Offline: Your attendance record has been saved locally and will sync when internet returns.", "info");
       return;
     }
 
     const { error } = await supabase.from('attendance').insert(records);
     if (error) {
       console.error("Attendance submission error:", error);
-      alert("Error: " + (error.message || "Failed to finalize record"));
+      showNotification(error.message || "Failed to finalize record", "error");
     } else {
       await supabase.from('lessons').update({ status: 'completed' }).eq('id', activeLesson.id);
       setActiveLesson(null);
       fetchTeacherData();
-      alert("Success: Attendance finalized!");
+      showNotification("Attendance finalized successfully!");
     }
     setLoading(false);
   };

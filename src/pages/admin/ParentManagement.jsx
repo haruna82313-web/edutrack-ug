@@ -6,8 +6,11 @@ import {
   Search, Phone, Mail, Check, X, Clock 
 } from 'lucide-react';
 
+import { useNotification } from '../../context/NotificationContext';
+
 const ParentManagement = () => {
   const { user } = useAuth();
+  const { showNotification } = useNotification();
   const [parents, setParents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(null);
@@ -52,8 +55,10 @@ const ParentManagement = () => {
 
       if (error) throw error;
       setSchoolSettings({ ...schoolSettings, marks_sharing_enabled: newValue });
+      showNotification(`Academic sharing is now ${newValue ? 'Enabled' : 'Disabled'}`, 'info');
     } catch (error) {
       console.error('Error updating marks sharing:', error.message);
+      showNotification('Update failure: ' + error.message, 'error');
     } finally {
       setUpdatingSettings(false);
     }
@@ -95,8 +100,9 @@ const ParentManagement = () => {
       setParents(parents.map(p => 
         p.id === parentId ? { ...p, approval_status: newStatus } : p
       ));
+      showNotification(`Guardian ${newStatus} successfully`);
     } catch (error) {
-      alert('Failed to update status: ' + error.message);
+      showNotification('Failed to update status: ' + error.message, 'error');
     } finally {
       setProcessing(null);
     }

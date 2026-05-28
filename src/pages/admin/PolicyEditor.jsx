@@ -6,8 +6,11 @@ import {
   Info, AlertCircle, CheckCircle2, RefreshCw 
 } from 'lucide-react';
 
+import { useNotification } from '../../context/NotificationContext';
+
 const PolicyEditor = () => {
   const { user } = useAuth();
+  const { showNotification } = useNotification();
   const [policies, setPolicies] = useState({
     general_rules: '',
     privacy_policy: '',
@@ -16,7 +19,6 @@ const PolicyEditor = () => {
   const [activeTab, setActiveTab] = useState('general_rules');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState(null);
 
   useEffect(() => {
     fetchPolicies();
@@ -51,7 +53,6 @@ const PolicyEditor = () => {
   const handleSave = async () => {
     try {
       setSaving(true);
-      setMessage(null);
       
       const { data: profile } = await supabase.from('users').select('school_id').eq('id', user.id).single();
       
@@ -68,10 +69,9 @@ const PolicyEditor = () => {
 
       if (error) throw error;
       
-      setMessage({ type: 'success', text: 'Policy successfully synchronized to the network.' });
-      setTimeout(() => setMessage(null), 5000);
+      showNotification('Policy successfully synchronized to the network.');
     } catch (error) {
-      setMessage({ type: 'error', text: 'Failed to synchronize: ' + error.message });
+      showNotification('Failed to synchronize: ' + error.message, 'error');
     } finally {
       setSaving(false);
     }
@@ -150,18 +150,7 @@ const PolicyEditor = () => {
             )}
           </div>
 
-          {message && (
-            <div className={`p-6 rounded-2xl flex items-center gap-4 border animate-in slide-in-from-bottom-4 duration-500 ${
-              message.type === 'success' 
-                ? 'bg-aurora-emerald/10 border-aurora-emerald/20 text-aurora-emerald' 
-                : 'bg-aurora-rose/10 border-aurora-rose/20 text-aurora-rose'
-            }`}>
-              {message.type === 'success' ? <CheckCircle2 size={24} /> : <AlertCircle size={24} />}
-              <p className="text-[10px] lg:text-xs font-black uppercase tracking-widest leading-relaxed">
-                {message.text}
-              </p>
-            </div>
-          )}
+
         </div>
       </div>
     </div>

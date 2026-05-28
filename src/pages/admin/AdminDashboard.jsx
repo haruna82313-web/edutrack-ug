@@ -123,15 +123,34 @@ const AdminDashboard = () => {
       const todayEnd = new Date(now.setHours(23, 59, 59, 999)).toISOString();
 
       // Attendance Stats
-      let attendanceQuery = supabase.from('attendance').select('status');
+      let attendanceQuery = supabase.from('attendance').select('status, student_id');
       if (schoolId) attendanceQuery = attendanceQuery.eq('school_id', schoolId);
       
       const { data: attendanceData } = await attendanceQuery
         .gte('created_at', todayStart)
         .lte('created_at', todayEnd);
 
-      const presentCount = attendanceData?.filter((a) => a.status === 'present').length || 0;
-      const absentCount = attendanceData?.filter((a) => a.status === 'absent').length || 0;
+      // Group attendance by student to avoid overcounting multiple lessons in a day
+      const studentAttendanceMap = attendanceData?.reduce((acc, curr) => {
+        if (!acc[curr.student_id]) {
+          acc[curr.student_id] = new Set();
+        }
+        acc[curr.student_id].add(curr.status);
+        return acc;
+      }, {}) || {};
+
+      let presentCount = 0;
+      let absentCount = 0;
+
+      Object.values(studentAttendanceMap).forEach(statuses => {
+        if (statuses.has('present')) {
+          // If a student was present for even one lesson, they are "On-Site"
+          presentCount++;
+        } else if (statuses.has('absent')) {
+          // Only count as absent if they were NEVER present in any lesson today
+          absentCount++;
+        }
+      });
 
       // Lesson Stats
       let lessonQuery = supabase.from('lessons').select('status').eq('lesson_date', new Date().toISOString().split('T')[0]);

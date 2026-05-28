@@ -7,8 +7,11 @@ import EditModal from '../../components/admin/EditModal';
 import RowActions from '../../components/admin/RowActions';
 import { deleteClassCascade } from '../../lib/adminCrud';
 
+import { useNotification } from '../../context/NotificationContext';
+
 const Classes = () => {
   const { user } = useAuth();
+  const { showNotification } = useNotification();
   const navigate = useNavigate();
   const [classes, setClasses] = useState([]);
   const [className, setClassName] = useState('');
@@ -70,8 +73,9 @@ const Classes = () => {
       
       setClassName('');
       fetchClasses();
+      showNotification('Class added successfully!');
     } catch (error) {
-      alert('Error adding class: ' + error.message);
+      showNotification('Error adding class: ' + error.message, 'error');
     } finally {
       setAdding(false);
     }
@@ -79,12 +83,13 @@ const Classes = () => {
 
   const deleteClass = async (id, e) => {
     e?.stopPropagation();
-    if (!confirm('Delete this class? Students must be moved or removed first.')) return;
+    if (!window.confirm('Delete this class? Students must be moved or removed first.')) return;
     try {
       await deleteClassCascade(id);
       fetchClasses();
+      showNotification('Class deleted successfully!');
     } catch (error) {
-      alert('Delete failed: ' + error.message);
+      showNotification('Delete failed: ' + error.message, 'error');
     }
   };
 
