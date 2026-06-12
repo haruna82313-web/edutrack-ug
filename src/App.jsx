@@ -13,6 +13,7 @@ import SchoolSetup from './pages/SchoolSetup';
 // Admin Pages
 import Classes from './pages/admin/Classes';
 import ClassDetails from './pages/admin/ClassDetails';
+import ClassReportCards from './pages/admin/ClassReportCards';
 import Students from './pages/admin/Students';
 import Subjects from './pages/admin/Subjects';
 import Teachers from './pages/admin/Teachers';
@@ -24,6 +25,7 @@ import SchoolDocuments from './pages/admin/SchoolDocuments';
 import DataExport from './pages/admin/DataExport';
 import ParentManagement from './pages/admin/ParentManagement';
 import PolicyEditor from './pages/admin/PolicyEditor';
+import SchoolSettings from './pages/admin/SchoolSettings';
 import ParentDashboard from './pages/parent/ParentDashboard';
 
 // --- MAIN APP COMPONENT ---
@@ -58,6 +60,11 @@ function App() {
         <Route path="/classes/:classId" element={
           <ProtectedRoute allowedRole="admin">
             <AdminLayout><ClassDetails /></AdminLayout>
+          </ProtectedRoute>
+        } />
+        <Route path="/classes/:classId/reports" element={
+          <ProtectedRoute allowedRole="admin">
+            <AdminLayout><ClassReportCards /></AdminLayout>
           </ProtectedRoute>
         } />
         
@@ -124,6 +131,12 @@ function App() {
         <Route path="/admin/policies" element={
           <ProtectedRoute allowedRole="admin">
             <AdminLayout><PolicyEditor /></AdminLayout>
+          </ProtectedRoute>
+        } />
+
+        <Route path="/admin/settings" element={
+          <ProtectedRoute allowedRole="admin">
+            <AdminLayout><SchoolSettings /></AdminLayout>
           </ProtectedRoute>
         } />
 

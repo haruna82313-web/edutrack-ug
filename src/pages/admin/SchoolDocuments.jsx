@@ -11,6 +11,11 @@ import {
   Share2,
   AlertCircle,
   Search,
+  Upload,
+  X,
+  Download,
+  File,
+  FileType,
 } from 'lucide-react';
 import { deleteSchoolDocument } from '../../lib/adminCrud';
 import SelectField from '../../components/admin/SelectField';
@@ -23,10 +28,13 @@ const SchoolDocuments = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [previewDoc, setPreviewDoc] = useState(null);
   const [editDoc, setEditDoc] = useState(null);
   const [form, setForm] = useState({ title: '', docType: 'circular', body: '' });
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [uploadProgress, setUploadProgress] = useState(0);
 
   const filteredDocs = documents.filter(doc => {
     const query = searchQuery.toLowerCase();
@@ -71,19 +79,86 @@ const SchoolDocuments = () => {
     })();
   }, [user.id]);
 
-  const resetForm = () => setForm({ title: '', docType: 'circular', body: '' });
+  const resetForm = () => {
+    setForm({ title: '', docType: 'circular', body: '' });
+    setSelectedFile(null);
+    setUploadProgress(0);
+  };
+
+  const handleFileSelect = (e) => {
+    if (e.target.files && e.target.files[0]) {
+      setSelectedFile(e.target.files[0]);
+    }
+  };
+
+  const removeSelectedFile = () => {
+    setSelectedFile(null);
+  };
+
+  const uploadFile = async (file, schoolId) => {
+    try {
+      setUploading(true);
+      setUploadProgress(0);
+
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}.${fileExt}`;
+      const filePath = `${schoolId}/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('school-documents')
+        .upload(filePath, file, {
+          cacheControl: '3600',
+          upsert: false,
+        });
+
+      if (uploadError) throw uploadError;
+
+      setUploadProgress(100);
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('school-documents')
+        .getPublicUrl(filePath);
+
+      return {
+        file_url: publicUrl,
+        file_path: filePath,
+        file_name: file.name,
+        file_type: file.type,
+        file_size: file.size,
+      };
+    } catch (err) {
+      console.warn('File upload skipped (school-documents storage bucket not set up yet):', err.message);
+      // If upload fails, ask user if they want to save without the file
+      const confirmSaveWithoutFile = window.confirm(
+        `File upload skipped (storage not set up yet).\n\nDo you want to save the document without the file?`
+      );
+      if (confirmSaveWithoutFile) {
+        return {}; // Return empty object to save without file
+      }
+      throw err;
+    } finally {
+      setUploading(false);
+    }
+  };
 
   const handleCreate = async (e) => {
     e.preventDefault();
     if (!schoolId) return;
     setSaving(true);
     try {
+      let fileData = {};
+      
+      if (selectedFile) {
+        fileData = await uploadFile(selectedFile, schoolId);
+      }
+
       const { error: err } = await supabase.from('school_documents').insert([
         {
           school_id: schoolId,
           title: form.title.trim(),
           doc_type: form.docType,
           body: form.body,
+          ...fileData,
         },
       ]);
       if (err) throw err;
@@ -119,15 +194,46 @@ const SchoolDocuments = () => {
     }
   };
 
-  const handleDelete = async (id) => {
+  const handleDelete = async (doc) => {
     if (!confirm('Delete this document permanently?')) return;
     try {
-      await deleteSchoolDocument(id);
-      if (previewDoc?.id === id) setPreviewDoc(null);
+      // Try to delete the file first, but don't fail the whole operation if file deletion fails
+      if (doc.file_path) {
+        try {
+          await supabase.storage
+            .from('school-documents')
+            .remove([doc.file_path]);
+        } catch (fileErr) {
+          console.warn('File deletion skipped (storage may not be set up):', fileErr.message);
+          // Continue to delete the document even if file deletion fails
+        }
+      }
+      await deleteSchoolDocument(doc.id);
+      if (previewDoc?.id === doc.id) setPreviewDoc(null);
       fetchDocs(schoolId);
     } catch (err) {
       alert(err.message);
     }
+  };
+
+  const downloadFile = (doc) => {
+    if (doc.file_url) {
+      window.open(doc.file_url, '_blank');
+    }
+  };
+
+  const getFileIcon = (fileType) => {
+    if (fileType?.includes('pdf')) return <FileText size={16} />;
+    if (fileType?.includes('image')) return <FileType size={16} />;
+    return <File size={16} />;
+  };
+
+  const formatFileSize = (bytes) => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
   const printDocument = (doc) => {
@@ -239,13 +345,64 @@ const SchoolDocuments = () => {
           </div>
           <textarea
             className="input-field min-h-[120px] lg:min-h-[160px] font-mono text-xs lg:text-sm"
-            placeholder="Type the full document here..."
+            placeholder="Type the full document here (optional if uploading a file)..."
             value={form.body}
             onChange={(e) => setForm({ ...form, body: e.target.value })}
-            required
           />
-          <button type="submit" disabled={saving || !schoolId} className="btn-primary py-3 lg:py-4 px-6 lg:px-8 text-[9px] lg:text-[10px] font-black uppercase tracking-widest shadow-glow w-full sm:w-auto">
-            {saving ? <Loader2 className="animate-spin inline" size={18} /> : 'Save document'}
+
+          {/* File Upload Area */}
+          <div className="space-y-3">
+            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
+              <Upload size={12} /> Attach File (PDF, Docs, Images, etc.)
+            </label>
+            
+            {!selectedFile ? (
+              <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-slate-700 rounded-2xl cursor-pointer bg-slate-950 hover:bg-slate-900 hover:border-primary-500/50 transition-all">
+                <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                  <Upload className="w-8 h-8 mb-3 text-slate-500" />
+                  <p className="text-sm font-bold text-slate-400">Click to upload or drag and drop</p>
+                  <p className="text-xs text-slate-600 mt-1">PDF, DOC, DOCX, PNG, JPG (Max 10MB)</p>
+                </div>
+                <input
+                  type="file"
+                  className="hidden"
+                  onChange={handleFileSelect}
+                  accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.xlsx,.xls"
+                />
+              </label>
+            ) : (
+              <div className="flex items-center justify-between p-4 bg-slate-950 rounded-2xl border border-slate-800">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-primary-600/10 text-primary-400 rounded-xl flex items-center justify-center">
+                    {getFileIcon(selectedFile.type)}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-bold text-white truncate">{selectedFile.name}</p>
+                    <p className="text-xs text-slate-500">{formatFileSize(selectedFile.size)}</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={removeSelectedFile}
+                  className="p-2 text-slate-400 hover:text-aurora-rose hover:bg-aurora-rose/10 rounded-xl transition-all"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+            )}
+          </div>
+
+          <button 
+            type="submit" 
+            disabled={saving || uploading || !schoolId} 
+            className="btn-primary py-3 lg:py-4 px-6 lg:px-8 text-[9px] lg:text-[10px] font-black uppercase tracking-widest shadow-glow w-full sm:w-auto flex items-center justify-center gap-2"
+          >
+            {saving || uploading ? (
+              <>
+                <Loader2 className="animate-spin" size={18} /> 
+                {uploading ? 'Uploading...' : 'Saving...'}
+              </>
+            ) : 'Save document'}
           </button>
         </form>
       </div>
@@ -269,13 +426,18 @@ const SchoolDocuments = () => {
               >
                 <div className="flex items-start justify-between gap-3 lg:gap-4">
                   <div className="w-8 h-8 bg-primary-600/10 text-primary-400 rounded-lg flex items-center justify-center border border-primary-500/10 shrink-0 mt-1">
-                    <FileText size={16} />
+                    {doc.file_url ? getFileIcon(doc.file_type) : <FileText size={16} />}
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 mb-1">
                       <span className="text-[8px] lg:text-[9px] font-black text-aurora-violet uppercase tracking-widest">
                         {docTypeLabel(doc.doc_type)}
                       </span>
+                      {doc.file_url && (
+                        <span className="inline-flex px-2 py-0.5 rounded-full text-[7px] lg:text-[8px] font-black uppercase tracking-widest border bg-aurora-cyan/10 text-aurora-cyan border-aurora-cyan/20">
+                          Attachment
+                        </span>
+                      )}
                       <span className={`inline-flex px-2 py-0.5 rounded-full text-[7px] lg:text-[8px] font-black uppercase tracking-widest border ${
                         ['circular', 'notice'].includes(doc.doc_type) 
                           ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' 
@@ -285,14 +447,27 @@ const SchoolDocuments = () => {
                       </span>
                     </div>
                     <h4 className="font-black text-white truncate text-sm lg:text-base">{doc.title}</h4>
-                    <p className="text-slate-500 text-[10px] lg:text-xs mt-1.5 lg:mt-2 line-clamp-2 whitespace-pre-wrap">{doc.body}</p>
+                    {doc.body && (
+                      <p className="text-slate-500 text-[10px] lg:text-xs mt-1.5 lg:mt-2 line-clamp-2 whitespace-pre-wrap">{doc.body}</p>
+                    )}
+                    {doc.file_url && (
+                      <div className="flex items-center gap-2 mt-1.5 lg:mt-2">
+                        <div className="flex items-center gap-1.5 text-[10px] text-aurora-cyan font-bold">
+                          <FileText size={12} />
+                          <span className="truncate">{doc.file_name}</span>
+                        </div>
+                        {doc.file_size && (
+                          <span className="text-[8px] text-slate-600">({formatFileSize(doc.file_size)})</span>
+                        )}
+                      </div>
+                    )}
                     <p className="text-[8px] font-bold text-slate-600 uppercase tracking-widest mt-2">
                       {new Date(doc.updated_at || doc.created_at).toLocaleDateString()}
                     </p>
                   </div>
                   <RowActions
                     onEdit={() => setEditDoc({ ...doc })}
-                    onDelete={() => handleDelete(doc.id)}
+                    onDelete={() => handleDelete(doc)}
                   />
                 </div>
               </div>
@@ -318,15 +493,71 @@ const SchoolDocuments = () => {
                 >
                   <Share2 size={14} lg:size={16} /> Share
                 </button>
+                {previewDoc.file_url && (
+                  <button
+                    type="button"
+                    onClick={() => downloadFile(previewDoc)}
+                    className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 lg:px-5 py-2.5 lg:py-3 rounded-xl lg:rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20 transition-all text-[9px] lg:text-[10px] font-black uppercase tracking-widest"
+                  >
+                    <Download size={14} lg:size={16} /> Download
+                  </button>
+                )}
               </div>
               <h3 className="text-xl lg:text-2xl font-black text-white leading-tight">{previewDoc.title}</h3>
               <p className="text-[9px] text-slate-500 font-black uppercase tracking-widest mt-2 mb-6">
                 {docTypeLabel(previewDoc.doc_type)} · Updated{' '}
                 {new Date(previewDoc.updated_at || previewDoc.created_at).toLocaleString()}
               </p>
-              <div className="text-slate-300 whitespace-pre-wrap leading-relaxed text-xs lg:text-sm border-t border-white/10 pt-6">
-                {previewDoc.body}
-              </div>
+
+              {/* File Attachment Preview */}
+              {previewDoc.file_url && (
+                <div className="mb-6 p-4 bg-slate-950 rounded-2xl border border-slate-800">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 bg-primary-600/10 text-primary-400 rounded-xl flex items-center justify-center">
+                      {getFileIcon(previewDoc.file_type)}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-bold text-white truncate">{previewDoc.file_name}</p>
+                      {previewDoc.file_size && (
+                        <p className="text-xs text-slate-500">{formatFileSize(previewDoc.file_size)}</p>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => downloadFile(previewDoc)}
+                      className="p-2.5 bg-primary-600 text-white rounded-xl hover:bg-primary-500 transition-all"
+                    >
+                      <Download size={18} />
+                    </button>
+                  </div>
+                  {/* PDF Preview */}
+                  {previewDoc.file_type?.includes('pdf') && (
+                    <div className="mt-4 border border-slate-800 rounded-xl overflow-hidden bg-white">
+                      <iframe
+                        src={previewDoc.file_url}
+                        className="w-full h-80"
+                        title="PDF Preview"
+                      />
+                    </div>
+                  )}
+                  {/* Image Preview */}
+                  {previewDoc.file_type?.includes('image') && (
+                    <div className="mt-4 border border-slate-800 rounded-xl overflow-hidden">
+                      <img
+                        src={previewDoc.file_url}
+                        alt={previewDoc.file_name}
+                        className="w-full max-h-80 object-contain bg-slate-900"
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Text Content */}
+              {previewDoc.body && (
+                <div className="text-slate-300 whitespace-pre-wrap leading-relaxed text-xs lg:text-sm border-t border-white/10 pt-6">
+                  {previewDoc.body}
+                </div>
+              )}
             </>
           ) : (
             <p className="text-slate-600 text-[10px] font-black uppercase tracking-widest text-center py-20">

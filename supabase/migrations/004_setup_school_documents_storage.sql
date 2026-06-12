@@ -1,0 +1,28 @@
+-- NOTE: You need to set up the storage bucket and policies manually in Supabase Dashboard
+--
+-- Steps:
+-- 1. Go to Storage in Supabase Dashboard
+-- 2. Create a new bucket named "school-documents"
+-- 3. Make sure the bucket is PUBLIC (toggle in bucket settings)
+-- 4. Add the following policies in the Policies tab for "school-documents" bucket:
+--
+-- Policy 1: "Authenticated users can upload school documents"
+-- - Operation: INSERT
+-- - Target roles: authenticated
+-- - Policy definition: (bucket_id = 'school-documents'::text)
+--
+-- Policy 2: "Authenticated users can view school documents"
+-- - Operation: SELECT
+-- - Target roles: authenticated
+-- - Policy definition: (bucket_id = 'school-documents'::text)
+--
+-- Policy 3: "Public can view school documents"
+-- - Operation: SELECT
+-- - Target roles: public
+-- - Policy definition: (bucket_id = 'school-documents'::text)
+--
+-- Policy 4: "Authenticated users can delete school documents"
+-- - Operation: DELETE
+-- - Target roles: authenticated
+-- - Policy definition: (bucket_id = 'school-documents'::text)
+

@@ -197,18 +197,18 @@ const AdminDashboard = () => {
 
   /** 4 columns × 3 rows = 12 hub modules */
   const hubItems = [
-    { label: 'Students', icon: Users, to: '/students', color: 'border-aurora-cyan text-aurora-cyan shadow-neon-cyan' },
-    { label: 'Teachers', icon: UserX, to: '/teachers', color: 'border-aurora-amber text-aurora-amber shadow-neon-amber' },
-    { label: 'Guardians', icon: ShieldCheck, to: '/admin/parents', color: 'border-aurora-violet text-aurora-violet shadow-neon-violet' },
-    { label: 'Classes', icon: Target, to: '/classes', color: 'border-aurora-violet text-aurora-violet shadow-neon-violet' },
-    { label: 'Subjects', icon: Award, to: '/subjects', color: 'border-aurora-rose text-aurora-rose shadow-neon-rose' },
-    { label: 'Lessons', icon: Calendar, to: '/lessons', color: 'border-aurora-cyan text-aurora-cyan shadow-neon-cyan' },
-    { label: 'Timetables', icon: Grid3X3, to: '/timetables', color: 'border-aurora-emerald text-aurora-emerald shadow-neon-emerald' },
-    { label: 'Syllabus', icon: BookOpen, to: '/syllabus', color: 'border-aurora-violet text-aurora-violet shadow-neon-violet' },
-    { label: 'Reports', icon: PieChart, to: '/reports', color: 'border-aurora-emerald text-aurora-emerald shadow-neon-emerald' },
-    { label: 'Documents', icon: FolderOpen, to: '/documents', color: 'border-aurora-amber text-aurora-amber shadow-neon-amber' },
-    { label: 'Export PDF', icon: FileText, to: '/export?format=pdf', color: 'border-aurora-rose text-aurora-rose shadow-neon-rose' },
-    { label: 'Export Excel', icon: FileSpreadsheet, to: '/export?format=excel', color: 'border-aurora-cyan text-aurora-cyan shadow-neon-cyan' },
+    { label: 'Students', icon: Users, to: '/students', color: 'border-aurora-cyan text-aurora-cyan' },
+    { label: 'Teachers', icon: UserX, to: '/teachers', color: 'border-aurora-amber text-aurora-amber' },
+    { label: 'Guardians', icon: ShieldCheck, to: '/admin/parents', color: 'border-aurora-violet text-aurora-violet' },
+    { label: 'Classes', icon: Target, to: '/classes', color: 'border-aurora-violet text-aurora-violet' },
+    { label: 'Subjects', icon: Award, to: '/subjects', color: 'border-aurora-rose text-aurora-rose' },
+    { label: 'Lessons', icon: Calendar, to: '/lessons', color: 'border-aurora-cyan text-aurora-cyan' },
+    { label: 'Timetables', icon: Grid3X3, to: '/timetables', color: 'border-aurora-emerald text-aurora-emerald' },
+    { label: 'Syllabus', icon: BookOpen, to: '/syllabus', color: 'border-aurora-violet text-aurora-violet' },
+    { label: 'Reports', icon: PieChart, to: '/reports', color: 'border-aurora-emerald text-aurora-emerald' },
+    { label: 'Documents', icon: FolderOpen, to: '/documents', color: 'border-aurora-amber text-aurora-amber' },
+    { label: 'Export PDF', icon: FileText, to: '/export?format=pdf', color: 'border-aurora-rose text-aurora-rose' },
+    { label: 'Export Excel', icon: FileSpreadsheet, to: '/export?format=excel', color: 'border-aurora-cyan text-aurora-cyan' },
   ];
 
   if (loading) {
@@ -242,7 +242,7 @@ const AdminDashboard = () => {
           </div>
         )}
         
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-5 lg:gap-6">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 lg:gap-5">
           {hubItems.map((item) => {
             const Icon = item.icon;
             const isDisabled = !isSubscribed;
@@ -252,21 +252,25 @@ const AdminDashboard = () => {
                 type="button"
                 disabled={isDisabled}
                 onClick={() => navigate(item.to)}
-                className={`aspect-square rounded-3xl border-2 flex flex-col items-center justify-center gap-3 sm:gap-5 transition-all duration-500 group relative ${
+                className={`aspect-square bg-slate-900 border-2 rounded-2xl lg:rounded-[2rem] flex flex-col items-center justify-center gap-2 lg:gap-3 transition-all duration-300 group relative active:scale-95 ${
                   isDisabled 
-                    ? 'bg-slate-900/50 border-slate-800 text-slate-700 grayscale' 
-                    : `bg-white/5 hover:scale-[1.05] hover:bg-white/10 active:scale-95 ${item.color}`
+                    ? 'border-slate-800 text-slate-700 grayscale' 
+                    : `${item.color} hover:bg-white/5 hover:border-current/50`
                 }`}
               >
-                <div className={`p-4 sm:p-5 rounded-2xl sm:rounded-2xl transition-all duration-500 ${isDisabled ? 'bg-slate-950' : 'bg-white/5 group-hover:rotate-6 group-hover:scale-110'}`}>
-                  <Icon className="w-6 h-6 sm:w-9 sm:h-9" />
+                <div className={`w-10 h-10 lg:w-12 lg:h-12 rounded-xl lg:rounded-2xl flex items-center justify-center transition-all duration-300 ${
+                  isDisabled ? 'bg-slate-950' : 'bg-white/5 group-hover:scale-110 group-hover:rotate-6'
+                }`}>
+                  <Icon size={22} lg={28} />
                 </div>
-                <span className={`text-[10px] sm:text-[11px] font-black uppercase tracking-[0.2em] sm:tracking-[0.25em] transition-all px-2 text-center leading-tight break-words max-w-full ${!isDisabled && 'group-hover:tracking-[0.35em]'}`}>
+                <span className={`text-[8px] lg:text-[9px] font-black uppercase tracking-[0.2em] text-center px-1 leading-tight ${
+                  !isDisabled ? item.color.split(' ')[1] : ''
+                }`}>
                   {item.label}
                 </span>
                 {isDisabled && (
                   <div className="absolute top-2 right-2">
-                    <X size={12} className="text-slate-700" />
+                    <X size={10} className="text-slate-700" />
                   </div>
                 )}
               </button>

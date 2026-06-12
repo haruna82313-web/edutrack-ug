@@ -162,7 +162,7 @@ const Students = () => {
       setEditing(null);
       fetchData();
     } catch (error) {
-      alert('Update failed: ' + error.message);
+      showNotification('Update failed: ' + error.message, 'error');
     } finally {
       setSaving(false);
     }

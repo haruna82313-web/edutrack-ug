@@ -83,8 +83,11 @@ const ParentDashboard = () => {
     };
 
     if (profile?.phone_number) {
-      fetchMyChildren();
-      fetchCirculars();
+      const loadData = async () => {
+        await fetchMyChildren(); // Wait for kids to load first
+        await fetchCirculars(); // Then load circulars with kids info
+      };
+      loadData();
       setupSubscription();
     }
 
@@ -222,15 +225,35 @@ const ParentDashboard = () => {
 
   const fetchCirculars = async () => {
     try {
+      // First get my kids
+      const myKidsIds = students.map(s => s.id);
+      
+      // Get all circulars
       const { data, error } = await supabase
         .from('school_documents')
         .select('*')
         .eq('school_id', profile.school_id)
         .order('updated_at', { ascending: false })
-        .limit(3);
+        .limit(20);
 
       if (error) throw error;
-      setCirculars(data || []);
+      
+      // Filter report cards to only my kids
+      const filteredCirculars = data?.filter(doc => {
+        const isReportCard = doc.title?.startsWith('Report Card:');
+        if (!isReportCard) return true; // Show all non-report-card circulars
+        
+        // Check if this report card belongs to one of my kids
+        if (doc.student_id && myKidsIds.includes(doc.student_id)) {
+          return true;
+        }
+        
+        // If no student_id, try to match by name in title
+        const studentNameInTitle = doc.title?.replace('Report Card: ', '');
+        return students.some(s => s.full_name === studentNameInTitle);
+      }) || [];
+
+      setCirculars(filteredCirculars);
     } catch (error) {
       console.error('Error fetching circulars:', error.message);
     }

@@ -6,7 +6,7 @@ import { motivationalQuotes } from '../lib/quotes';
 import { 
   LayoutDashboard, Users, BookOpen, GraduationCap, 
   LogOut, UserCheck, Calendar, FileText, ListChecks, Grid3X3, FolderOpen, FileSpreadsheet,
-  Bell, Search, Menu, X, WifiOff, Zap, ChevronRight, ChevronDown, Lock
+  Bell, Search, Menu, X, WifiOff, Zap, ChevronRight, ChevronDown, Lock, Settings
 } from 'lucide-react';
 
 const AdminLayout = ({ children }) => {
@@ -112,6 +112,7 @@ const AdminLayout = ({ children }) => {
     { to: '/documents', label: 'Documents', icon: <FolderOpen size={20} /> },
     { to: '/export?format=pdf', label: 'Export PDF', icon: <FileText size={20} /> },
     { to: '/export?format=excel', label: 'Export Excel', icon: <FileSpreadsheet size={20} /> },
+    { to: '/admin/settings', label: 'Settings', icon: <Settings size={20} /> },
   ];
 
   const renderNavItem = (item, isSidebar = false) => {

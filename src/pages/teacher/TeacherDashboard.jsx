@@ -10,6 +10,15 @@ import {
 } from 'lucide-react';
 
 import { useNotification } from '../../context/NotificationContext';
+import {
+  calculateOLevelTotal,
+  getOLevelGrade,
+  getALevelPrincipalGradeAndPoints,
+  getALevelSubsidiaryGradeAndPoints,
+  calculateTotalALevelPoints,
+  calculateWeightedPaperScore,
+  determineOLevelResultStatus
+} from '../../utils/uneb-engine';
 
 const TeacherDashboard = () => {
   const { user } = useAuth();
@@ -33,13 +42,31 @@ const TeacherDashboard = () => {
   const [syncing, setSyncing] = useState(false);
   const [subscriptionStatus, setSubscriptionStatus] = useState('Active');
   
+  // Preset comment options
+  const COMMENT_PRESETS = [
+    { value: 'excellent', label: 'Excellent performance! Keep up the great work!' },
+    { value: 'good', label: 'Good performance. With more effort, you can excel!' },
+    { value: 'satisfactory', label: 'Satisfactory performance. Room for improvement.' },
+    { value: 'needs_improvement', label: 'Needs improvement. Let us work together.' },
+    { value: 'hardworking', label: 'Very hardworking student! Continue this way!' },
+    { value: 'attentive', label: 'Attentive and participates well in class.' },
+    { value: 'makeup', label: 'Please complete the makeup assessment.' }
+  ];
+
   // Marks state
   const [selectedClass, setSelectedClass] = useState('');
   const [selectedSubject, setSelectedSubject] = useState('');
   const [classes, setClasses] = useState([]);
   const [subjects, setSubjects] = useState([]);
   const [marks, setMarks] = useState({}); // { studentId: score }
+  const [comments, setComments] = useState({}); // { studentId: commentKey }
   const [submittingMarks, setSubmittingMarks] = useState(false);
+  
+  // UNEB Grading State
+  const [selectedLevel, setSelectedLevel] = useState('o-level'); // 'o-level' or 'a-level'
+  const [assessmentType, setAssessmentType] = useState('single'); // 'single', 'multiple-papers', 'full-uneb'
+  const [unebMarks, setUnebMarks] = useState({}); // { studentId: { aoi: [1,2,3], summative: 80, papers: [...], etc. } }
+  const [showGradePreview, setShowGradePreview] = useState(false);
 
   const [isPolicyModalOpen, setIsPolicyModalOpen] = useState(false);
 
@@ -262,6 +289,7 @@ By continuing to use the EduTrack Staff Terminal, you acknowledge your responsib
     const { data } = await supabase.from('students').select('*').eq('class_id', classId).order('full_name');
     setStudents(data || []);
     setMarks({});
+    setComments({});
     setLoading(false);
   };
 
@@ -274,33 +302,42 @@ By continuing to use the EduTrack Staff Terminal, you acknowledge your responsib
       
       const records = Object.entries(marks)
         .filter(([_, score]) => score !== '' && !isNaN(parseFloat(score)))
-        .map(([studentId, score]) => ({
-          student_id: studentId,
-          subject_id: selectedSubject,
-          teacher_id: user.id,
-          marks: parseFloat(score),
-          max_marks: 100,
-          school_id: profile.school_id,
-          year: 2026,
-          term: 'Term 1' // Default term
-        }));
+        .map(([studentId, score]) => {
+          const selectedComment = comments[studentId];
+          const commentText = selectedComment 
+            ? COMMENT_PRESETS.find(c => c.value === selectedComment)?.label 
+            : null;
+            
+          return {
+            student_id: studentId,
+            subject_id: selectedSubject,
+            teacher_id: user.id,
+            marks: parseFloat(score),
+            max_marks: 100,
+            school_id: profile.school_id,
+            year: 2026,
+            term: 'Term 1', // Default term
+            comments: commentText,
+            is_published: true // Make sure parents can see the marks!
+          };
+        });
 
       if (records.length === 0) {
-        alert("Please enter at least one valid score.");
+        showNotification("Please enter at least one valid score.", "info");
         setSubmittingMarks(false);
         return;
       }
 
       if (!isOnline) {
         queueOfflineAction('SUBMIT_MARKS', { records });
-        alert("Working Offline: Marks saved locally and will sync later.");
+        showNotification("Working Offline: Marks saved locally and will sync later.", "info");
       } else {
         const { error } = await supabase.from('student_marks').insert(records);
         if (error) {
           console.error("Marks submission error:", error);
           throw new Error(error.message || "Failed to submit marks to database");
         }
-        alert("Success: Marks submitted successfully!");
+        showNotification("Success: Marks submitted successfully!");
       }
       
       setMarks({});
@@ -308,7 +345,7 @@ By continuing to use the EduTrack Staff Terminal, you acknowledge your responsib
       setSelectedSubject('');
       setStudents([]);
     } catch (err) {
-      alert("Error: " + err.message);
+      showNotification("Error: " + err.message, "error");
     } finally {
       setSubmittingMarks(false);
     }
@@ -726,7 +763,7 @@ By continuing to use the EduTrack Staff Terminal, you acknowledge your responsib
           {activeTab === 'grades' && (
             <div className="space-y-6">
               <div className="bg-slate-900 p-6 lg:p-8 rounded-3xl border border-slate-800 shadow-xl">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                   <div className="space-y-2">
                     <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Select Class</label>
                     <select 
@@ -752,6 +789,17 @@ By continuing to use the EduTrack Staff Terminal, you acknowledge your responsib
                       {subjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                     </select>
                   </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Grading Level</label>
+                    <select 
+                      className="input-field appearance-none"
+                      value={selectedLevel}
+                      onChange={(e) => setSelectedLevel(e.target.value)}
+                    >
+                      <option value="o-level">O-Level</option>
+                      <option value="a-level">A-Level</option>
+                    </select>
+                  </div>
                 </div>
               </div>
 
@@ -771,7 +819,7 @@ By continuing to use the EduTrack Staff Terminal, you acknowledge your responsib
                   </div>
                   <div className="divide-y divide-slate-800">
                     {students.filter(s => filterGender === 'all' || s.gender === filterGender).map(s => (
-                      <div key={s.id} className="p-4 lg:p-6 flex items-center justify-between gap-4 hover:bg-white/5 transition-colors">
+                      <div key={s.id} className="p-4 lg:p-6 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 hover:bg-white/5 transition-colors">
                         <div className="flex items-center gap-4">
                           <div className="w-10 h-10 bg-primary-600/10 text-primary-400 rounded-xl flex items-center justify-center font-black text-xs">
                             {s.full_name.substring(0, 1).toUpperCase()}
@@ -788,17 +836,29 @@ By continuing to use the EduTrack Staff Terminal, you acknowledge your responsib
                             <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest">{s.gender || 'Not Specified'}</span>
                           </div>
                         </div>
-                        <div className="flex items-center gap-3">
-                          <input 
-                            type="number"
-                            placeholder="0"
-                            min="0"
-                            max="100"
-                            className="w-20 lg:w-24 bg-slate-950 border border-slate-800 rounded-xl px-4 py-2 text-center font-black text-primary-400 focus:border-primary-500 outline-none transition-all"
-                            value={marks[s.id] || ''}
-                            onChange={(e) => setMarks(prev => ({ ...prev, [s.id]: e.target.value }))}
-                          />
-                          <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">/ 100</span>
+                        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 w-full sm:w-auto">
+                          <div className="flex items-center gap-3">
+                            <input 
+                              type="number"
+                              placeholder="0"
+                              min="0"
+                              max="100"
+                              className="w-20 lg:w-24 bg-slate-950 border border-slate-800 rounded-xl px-4 py-2 text-center font-black text-primary-400 focus:border-primary-500 outline-none transition-all"
+                              value={marks[s.id] || ''}
+                              onChange={(e) => setMarks(prev => ({ ...prev, [s.id]: e.target.value }))}
+                            />
+                            <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">/ 100</span>
+                          </div>
+                          <select 
+                            className="flex-1 sm:flex-none bg-slate-950 border border-slate-800 rounded-xl px-4 py-2 text-[10px] font-black text-slate-300 uppercase tracking-widest focus:border-primary-500 outline-none transition-all"
+                            value={comments[s.id] || ''}
+                            onChange={(e) => setComments(prev => ({ ...prev, [s.id]: e.target.value }))}
+                          >
+                            <option value="">Select Comment</option>
+                            {COMMENT_PRESETS.map(c => (
+                              <option key={c.value} value={c.value}>{c.label}</option>
+                            ))}
+                          </select>
                         </div>
                       </div>
                     ))}

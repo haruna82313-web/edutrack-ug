@@ -3,7 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { 
   Users, ChevronLeft, Phone, UserPlus, Trash2, 
-  Loader2, GraduationCap, Calendar, BookOpen, ArrowRight, Star, ShieldCheck, Target, TrendingUp, FileSpreadsheet
+  Loader2, GraduationCap, Calendar, BookOpen, ArrowRight, Star, ShieldCheck, Target, TrendingUp, FileSpreadsheet, FileText
 } from 'lucide-react';
 import StudentDetailsModal from '../../components/admin/StudentDetailsModal';
 
@@ -207,8 +207,14 @@ const ClassDetails = () => {
               )}
             </div>
             <Link 
-              to="/students" 
+              to={`/classes/${classId}/reports`} 
               className="btn-primary py-3 lg:py-4 px-6 lg:px-8 shadow-glow self-start md:self-auto text-[10px] lg:text-xs font-black uppercase tracking-widest"
+            >
+              <FileText size={16} lg:size={18} /> Report Cards
+            </Link>
+            <Link 
+              to="/students" 
+              className="py-3 lg:py-4 px-6 lg:px-8 bg-white/5 border border-white/10 rounded-2xl text-slate-300 text-[10px] lg:text-xs font-black uppercase tracking-widest hover:bg-white/10 transition-all self-start md:self-auto"
             >
               <UserPlus size={16} lg:size={18} /> Enroll Student
             </Link>
