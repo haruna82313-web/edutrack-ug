@@ -25,6 +25,22 @@ const CircularViewerModal = ({ isOpen, onClose, doc }) => {
   const loadReportCardData = async () => {
     setLoadingReport(true);
     try {
+      // Check if body contains JSON snapshot (new format)
+      if (doc.body) {
+        try {
+          const parsed = JSON.parse(doc.body);
+          // If it has marks, it's a snapshot!
+          if (parsed.marks || (parsed.student && parsed.term)) {
+            setReportData(parsed);
+            setLoadingReport(false);
+            return;
+          }
+        } catch (parseErr) {
+          // Not JSON, fall through to old logic
+        }
+      }
+
+      // Fallback: reconstruct from database (for old format)
       const data = {
         student: null,
         marks: [],
@@ -74,22 +90,22 @@ const CircularViewerModal = ({ isOpen, onClose, doc }) => {
         data.class_name = student.classes?.name || data.class_name;
 
         // Fetch marks for the student
-        let marksQuery = supabase
+        // Try exact term/year first
+        let { data: marks } = await supabase
           .from('student_marks')
           .select('*, subjects(name)')
-          .eq('student_id', student.id);
-        
-        // Try exact term/year first
-        let { data: marks } = await marksQuery
+          .eq('student_id', student.id)
           .eq('year', parseInt(data.year))
           .eq('term', data.term);
         
-        // If no marks found, get all marks for the student
+        // If no marks found, get all published marks for the student
         if (!marks || marks.length === 0) {
           const { data: allMarks } = await supabase
             .from('student_marks')
             .select('*, subjects(name)')
-            .eq('student_id', student.id);
+            .eq('student_id', student.id)
+            .order('created_at', { ascending: false })
+            .limit(50);
           marks = allMarks;
         }
         data.marks = marks || [];
