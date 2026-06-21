@@ -22,7 +22,9 @@ import {
   Phone,
   ShieldCheck,
   BookOpen,
-  PieChart
+  PieChart,
+  Mail,
+  User
 } from 'lucide-react';
 
 const AdminDashboard = () => {
@@ -41,13 +43,28 @@ const AdminDashboard = () => {
   const [subscriptionStatus, setSubscriptionStatus] = useState('Active');
   const [showSubModal, setShowSubModal] = useState(false);
   const [showAboutModal, setShowAboutModal] = useState(false);
+  const [showHowToModal, setShowHowToModal] = useState(false);
   const [pricingIndex, setPricingIndex] = useState(0);
 
   const pricingTiers = [
-    { range: "1 - 400 Students", price: "1,000,000 UGX" },
-    { range: "401 - 1,000 Students", price: "1,200,000 UGX" },
-    { range: "1,001 - 1,500 Students", price: "1,500,000 UGX" },
-    { range: "1,800+ Students", price: "2,000,000 UGX" }
+    { 
+      name: "Starter", 
+      range: "1 - 1000 Students", 
+      price: "3,500,000 UGX",
+      valueProps: ["Core Features (Attendance, Marks, Parent Portal)", "Standard Email Support"]
+    },
+    { 
+      name: "Growth", 
+      range: "1001 - 1500 Students", 
+      price: "4,200,000 UGX",
+      valueProps: ["Everything in Starter", "Report Cards & Basic Analytics", "Priority 48hr Support"]
+    },
+    { 
+      name: "Enterprise", 
+      range: "1501+ Students", 
+      price: "5,000,000 UGX",
+      valueProps: ["Everything in Growth", "Custom Branding (PDFs & Portal)", "24/7 Priority Support", "Multi-Campus Support"]
+    }
   ];
 
   useEffect(() => {
@@ -280,23 +297,40 @@ const AdminDashboard = () => {
       </div>
 
       {/* Mobile-Only Pill Buttons */}
-      <div className="flex flex-col gap-3 mt-8 sm:hidden px-2">
+      <div className="flex flex-col gap-4 mt-8 sm:hidden px-4">
         <button 
           onClick={() => setShowSubModal(true)}
-          className={`flex items-center justify-center gap-3 py-4 rounded-full font-black text-[10px] uppercase tracking-[0.2em] transition-all shadow-glow border-2 ${
+          className={`flex items-center justify-between gap-4 px-6 py-5 rounded-2xl font-black text-[11px] uppercase tracking-[0.25em] transition-all border-2 ${
             isSubscribed 
-              ? 'bg-aurora-cyan/10 border-aurora-cyan/30 text-aurora-cyan' 
+              ? 'bg-aurora-cyan/10 border-aurora-cyan/30 text-aurora-cyan hover:bg-aurora-cyan/20' 
               : 'bg-aurora-rose text-white border-aurora-rose shadow-neon-rose animate-bounce'
           }`}
         >
-          <CreditCard size={16} /> 
-          {isSubscribed ? 'Subscription: Active' : 'Renew Subscription'}
+          <div className="flex items-center gap-3">
+            <CreditCard size={18} />
+            <span>{isSubscribed ? 'Subscription: Active' : 'Renew Subscription'}</span>
+          </div>
+          <span className="text-[10px] text-opacity-80">→</span>
+        </button>
+        <button 
+          onClick={() => setShowHowToModal(true)}
+          className="flex items-center justify-between gap-4 px-6 py-5 rounded-2xl bg-amber-500/10 border-2 border-amber-500/30 text-amber-400 font-black text-[11px] uppercase tracking-[0.25em] hover:bg-amber-500/20"
+        >
+          <div className="flex items-center gap-3">
+            <BookOpen size={18} />
+            <span>How to Use EduTrack</span>
+          </div>
+          <span className="text-[10px] text-amber-500/80">→</span>
         </button>
         <button 
           onClick={() => setShowAboutModal(true)}
-          className="flex items-center justify-center gap-3 py-4 rounded-full bg-white/5 border-2 border-white/10 text-slate-300 font-black text-[10px] uppercase tracking-[0.2em] hover:bg-white/10"
+          className="flex items-center justify-between gap-4 px-6 py-5 rounded-2xl bg-white/5 border-2 border-white/10 text-slate-300 font-black text-[11px] uppercase tracking-[0.25em] hover:bg-white/10"
         >
-          <Info size={16} /> About EduTrack UG
+          <div className="flex items-center gap-3">
+            <Info size={18} />
+            <span>About EduTrack UG</span>
+          </div>
+          <span className="text-[10px] text-slate-500">→</span>
         </button>
       </div>
 
@@ -338,7 +372,7 @@ const AdminDashboard = () => {
       {/* Subscription Modal */}
       {showSubModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center sm:p-4 h-dvh w-screen overflow-hidden bg-slate-950/95 backdrop-blur-xl">
-          <div className="relative bg-slate-950 w-full h-full sm:h-auto sm:max-w-md flex flex-col justify-between p-6 sm:p-10 sm:rounded-[2.5rem] sm:border sm:border-white/10 shadow-2xl animate-in fade-in zoom-in duration-500 overflow-hidden">
+          <div className="relative bg-slate-950 w-full h-full sm:h-auto sm:max-w-lg flex flex-col justify-between p-6 sm:p-10 sm:rounded-[2.5rem] sm:border sm:border-white/10 shadow-2xl animate-in fade-in zoom-in duration-500 overflow-hidden">
             
             {/* Header Section */}
             <div className="text-center space-y-4 pt-4 sm:pt-0">
@@ -355,23 +389,36 @@ const AdminDashboard = () => {
             
             {/* Pricing List - Interchangeable Tiers (5s Loop) */}
             <div className="flex-1 overflow-y-auto no-scrollbar py-4 space-y-8">
-              <div className="flex flex-col justify-center relative min-h-[100px] overflow-hidden">
+              <div className="flex flex-col justify-center relative min-h-[220px] overflow-hidden">
                 <div className="relative w-full h-full flex items-center justify-center">
                   {pricingTiers.map((tier, idx) => (
                     <div 
                       key={idx} 
-                      className={`absolute inset-0 bg-slate-900/60 backdrop-blur-md border border-slate-800/80 rounded-xl p-6 flex items-center justify-between transition-all duration-1000 ease-in-out
+                      className={`absolute inset-0 bg-slate-900/60 backdrop-blur-md border border-slate-800/80 rounded-xl p-6 flex flex-col items-start justify-between transition-all duration-1000 ease-in-out
                         ${idx === pricingIndex 
                           ? 'opacity-100 scale-100 blur-none' 
                           : 'opacity-0 scale-95 blur-sm pointer-events-none'}`}
                     >
-                      <div className="space-y-1">
-                        <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] leading-none">Enrollment Range</p>
-                        <p className="text-sm font-bold text-slate-200 tracking-wide uppercase">{tier.range}</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-[10px] font-black text-cyan-500/50 uppercase tracking-[0.2em] leading-none mb-1">Termly Rate</p>
-                        <p className="text-base font-extrabold text-cyan-400 tracking-tight">{tier.price}</p>
+                      <div className="w-full space-y-4">
+                        <div className="flex items-end justify-between w-full">
+                          <div className="space-y-1">
+                            <p className="text-xs font-black text-cyan-400 uppercase tracking-[0.2em] leading-none">{tier.name}</p>
+                            <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.1em] leading-none">Enrollment Range</p>
+                            <p className="text-sm font-bold text-slate-200 tracking-wide uppercase">{tier.range}</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-[10px] font-black text-cyan-500/50 uppercase tracking-[0.2em] leading-none mb-1">Termly Rate</p>
+                            <p className="text-xl font-extrabold text-cyan-400 tracking-tight">{tier.price}</p>
+                          </div>
+                        </div>
+                        <div className="space-y-2">
+                          {tier.valueProps.map((prop, i) => (
+                            <div key={i} className="flex items-center gap-2">
+                              <CheckSquare size={12} className="text-emerald-400 shrink-0" />
+                              <p className="text-[10px] text-slate-300">{prop}</p>
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -508,6 +555,39 @@ const AdminDashboard = () => {
                 </p>
               </div>
 
+              {/* Founder Section */}
+              <div className="space-y-4 pt-4 border-t border-white/5">
+                <div className="flex items-center gap-3 text-rose-400">
+                  <User size={18} />
+                  <h4 className="text-sm font-black uppercase tracking-widest">Founder</h4>
+                </div>
+                <div className="bg-white/5 p-6 rounded-2xl border border-white/5 space-y-4">
+                  <div className="flex items-start gap-4">
+                    {/* Founder Avatar/Photo Placeholder */}
+                    <div className="w-20 h-20 bg-gradient-to-br from-rose-500 to-amber-500 rounded-2xl flex items-center justify-center shrink-0">
+                      <User size={36} className="text-white" />
+                    </div>
+                    <div className="flex-1 space-y-2">
+                      <p className="text-lg font-extrabold text-white tracking-tight">ZZIWA HARUNA</p>
+                      <p className="text-xs font-bold text-rose-400 uppercase tracking-widest">Founder & CEO, Modern Systems Tech</p>
+                      <p className="text-xs font-medium text-slate-400 leading-relaxed italic">
+                        "My mission is to eliminate administrative friction for every Ugandan school—so educators can focus on what matters most: teaching."
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-3 pt-2">
+                    <a href="tel:+256752333216" className="flex items-center gap-2 bg-white/10 hover:bg-white/20 px-4 py-2 rounded-xl transition-all">
+                      <Phone size={14} className="text-emerald-400" />
+                      <span className="text-xs font-bold text-slate-200">0752 333 216</span>
+                    </a>
+                    <a href="mailto:edutrackug@gmail.com" className="flex items-center gap-2 bg-white/10 hover:bg-white/20 px-4 py-2 rounded-xl transition-all">
+                      <Mail size={14} className="text-cyan-400" />
+                      <span className="text-xs font-bold text-slate-200">edutrackug@gmail.com</span>
+                    </a>
+                  </div>
+                </div>
+              </div>
+
               <div className="pt-4 border-t border-white/5 text-center">
                 <p className="text-[9px] font-black text-slate-600 uppercase tracking-[0.3em]">
                   Developed by Modern Systems Tech <br />
@@ -521,6 +601,106 @@ const AdminDashboard = () => {
               <button 
                 onClick={() => setShowAboutModal(false)}
                 className="w-full bg-gradient-to-r from-violet-500 to-fuchsia-600 py-5 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] text-white shadow-lg shadow-violet-500/10 hover:shadow-violet-500/30 active:scale-[0.98] transition-all"
+              >
+                Back to Hub
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* How to Use Modal */}
+      {showHowToModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center sm:p-4 h-dvh w-screen overflow-hidden bg-slate-950/95 backdrop-blur-xl">
+          <div className="relative bg-slate-950 w-full h-full sm:h-auto sm:max-w-2xl flex flex-col justify-between p-6 sm:p-10 sm:rounded-[2.5rem] sm:border sm:border-white/10 shadow-2xl animate-in fade-in zoom-in duration-500 overflow-hidden">
+            
+            {/* Header Section */}
+            <div className="text-center space-y-4 pt-4 sm:pt-0">
+              <div className="mx-auto w-12 h-12 bg-gradient-to-br from-amber-500 to-orange-600 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-amber-500/20 mb-6">
+                <BookOpen size={24} />
+              </div>
+              <h3 className="text-2xl sm:text-3xl font-extrabold tracking-tight bg-gradient-to-b from-white to-slate-400 bg-clip-text text-transparent uppercase">
+                How to Use EduTrack
+              </h3>
+              <p className="text-xs font-semibold tracking-widest text-amber-400 max-w-xs mx-auto text-center uppercase leading-relaxed">
+                Quick start guide for administrators
+              </p>
+            </div>
+            
+            {/* Scrollable Content Section */}
+            <div className="flex-1 my-8 overflow-y-auto no-scrollbar space-y-8 pr-2">
+              <div className="space-y-4">
+                <div className="flex items-center gap-3 text-amber-400">
+                  <Target size={18} />
+                  <h4 className="text-sm font-black uppercase tracking-widest">Phase 1: Initial School Setup</h4>
+                </div>
+                <p className="text-xs font-medium text-slate-400 leading-relaxed text-justify">
+                  Before teachers and students can use EduTrack effectively, administrators must first complete the foundational configuration process. Start by navigating through the hub buttons in the following order to ensure proper dependencies are set up correctly. First, configure your academic year and term structure, as all subsequent activities will be tied to these temporal markers.
+                </p>
+                <p className="text-xs font-medium text-slate-400 leading-relaxed text-justify">
+                  Add all your teaching staff via the Teachers module next. When creating teacher accounts, ensure you assign them to their respective subject areas and classes. Accurate teacher data ensures marks entry later in the process. After teachers, create your class structure: Senior 1 through Senior 6, divided appropriately into streams if applicable, and assign a class teachers where necessary. Each class must then have students enrolled, which you can do in bulk or individually via the Students button.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4">
+                <div className="bg-white/5 p-5 rounded-2xl border border-white/5 space-y-3">
+                  <div className="flex items-center gap-2 text-cyan-400">
+                    <Users size={16} />
+                    <h5 className="text-[11px] font-black uppercase tracking-widest">Student Management</h5>
+                  </div>
+                  <p className="text-[10px] text-slate-500 leading-relaxed">
+                    The Students module is your centralized directory hub for everything related to student lifecycle management. From here, you can add new enrollments, edit student biographical data including parent/guardian contact information, assign students to classes, and manage promotions/demotions as students progress through academic years. You can also view student attendance and marks history from the student profile, which is accessible by clicking any student in the directory.
+                  </p>
+                </div>
+                <div className="bg-white/5 p-5 rounded-2xl border border-white/5 space-y-3">
+                  <div className="flex items-center gap-2 text-rose-400">
+                    <Calendar size={16} />
+                    <h5 className="text-[11px] font-black uppercase tracking-widest">Attendance Tracking</h5>
+                  </div>
+                  <p className="text-[10px] text-slate-500 leading-relaxed">
+                    Attendance in EduTrack is managed on a daily, term-basis and class-basis, with teachers marking students as present, absent, or with an excused absence. Daily attendance data syncs instantly across the entire platform, automatically populating real-time in reports and parent portal access. Administrators can generate comprehensive attendance reports to identify patterns of absenteeism early, allowing for proactive interventions with students and parents.
+                  </p>
+                </div>
+                <div className="bg-white/5 p-5 rounded-2xl border border-white/5 space-y-3">
+                  <div className="flex items-center gap-2 text-violet-400">
+                    <Award size={16} />
+                    <h5 className="text-[11px] font-black uppercase tracking-widest">Marks & Assessments</h5>
+                  </div>
+                  <p className="text-[10px] text-slate-500 leading-relaxed">
+                    The Marks module is where teachers submit assessments, mid-term exams, end-of-term exams, and other assessment types. When entering marks, always select the correct assessment type because this is what will appear on report cards. You can filter marks by student, subject, term, year, and assessment type to view performance. Marks are automatically graded using the official UNEB grading scale (O-Level and A-Level supported natively in the system, with points calculated automatically).
+                  </p>
+                </div>
+                <div className="bg-white/5 p-5 rounded-2xl border border-white/5 space-y-3">
+                  <div className="flex items-center gap-2 text-emerald-400">
+                    <PieChart size={16} />
+                    <h5 className="text-[11px] font-black uppercase tracking-widest">Report Cards Generation</h5>
+                  </div>
+                  <p className="text-[10px] text-slate-500 leading-relaxed">
+                    The Reports module is one of the most powerful features of EduTrack. From here, you can generate professional, beautifully designed report cards for an individual student or an entire class at the click of a button. Reports include student attendance, marks, and class positions, with correct filtering for term, year, and assessment type, ensuring that you only use the intended marks on final reports. You can preview reports directly in your browser before downloading them as PDFs, or download an entire class as a compressed ZIP file for bulk printing and distribution.
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <div className="flex items-center gap-3 text-cyan-400">
+                  <CheckSquare size={18} />
+                  <h4 className="text-sm font-black uppercase tracking-widest">Administrator Pro Tips & Best Practices</h4>
+                </div>
+                <div className="space-y-2">
+                  <p className="text-xs font-medium text-slate-400 leading-relaxed">• Always use a consistent assessment type (typically end-of-term exams for final report cards. This avoids confusion and ensures that only the intended marks are displayed.</p>
+                  <p className="text-xs font-medium text-slate-400 leading-relaxed">• Regularly export your data to Excel or PDF to maintain offline backups. This protects against data loss and provides an extra layer of security.</p>
+                  <p className="text-xs font-medium text-slate-400 leading-relaxed">• Communicate regularly with parents through the Parent Portal, which allows them to view their childrens’ progress in real-time.</p>
+                  <p className="text-xs font-medium text-slate-400 leading-relaxed">• Train your teaching staff on the proper use of the platform, especially assessment types and consistent data entry, to maintain data integrity.</p>
+                  <p className="text-xs font-medium text-slate-400 leading-relaxed">• Use the analytics dashboard to identify areas where students are struggling and provide timely interventions early on to support student success.</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Action Button Section */}
+            <div className="pt-4 sm:pt-0">
+              <button 
+                onClick={() => setShowHowToModal(false)}
+                className="w-full bg-gradient-to-r from-amber-500 to-orange-600 py-5 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] text-white shadow-lg shadow-amber-500/10 hover:shadow-amber-500/30 active:scale-[0.98] transition-all"
               >
                 Back to Hub
               </button>
