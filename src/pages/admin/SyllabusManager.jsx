@@ -21,9 +21,14 @@ const SyllabusManager = () => {
 
   const fetchData = async () => {
     setLoading(true);
-    const { data: s } = await supabase.from('subjects').select('*');
-    const { data: c } = await supabase.from('classes').select('*');
-    const { data: t } = await supabase.from('syllabus_topics').select('*, subjects(name), classes(name)').order('order_index');
+    const { data: prof } = await supabase.from('users').select('school_id').eq('id', user.id).single();
+    const { data: s } = await supabase.from('subjects').select('*').eq('school_id', prof.school_id);
+    const { data: c } = await supabase.from('classes').select('*').eq('school_id', prof.school_id);
+    const { data: t } = await supabase
+      .from('syllabus_topics')
+      .select('*, subjects(name), classes(name)')
+      .eq('school_id', prof.school_id)
+      .order('order_index');
     setSubjects(s || []); setClasses(c || []); setTopics(t || []);
     setLoading(false);
   };

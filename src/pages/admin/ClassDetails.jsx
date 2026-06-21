@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
+import { useAuth } from '../../context/AuthContext';
 import { 
-  Users, ChevronLeft, Phone, UserPlus, Trash2, 
+  Users, ChevronLeft, Phone, UserPlus, Trash2, X,
   Loader2, GraduationCap, Calendar, BookOpen, ArrowRight, Star, ShieldCheck, Target, TrendingUp, FileSpreadsheet, FileText
 } from 'lucide-react';
 import StudentDetailsModal from '../../components/admin/StudentDetailsModal';

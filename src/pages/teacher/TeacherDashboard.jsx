@@ -290,9 +290,20 @@ By continuing to use the EduTrack Staff Terminal, you acknowledge your responsib
     const today = new Date().toISOString().split('T')[0];
 
     try {
+      const { data: prof } = await supabase.from('users').select('school_id').eq('id', user.id).single();
       const [lessonRes, topicRes] = await Promise.all([
-        supabase.from('lessons').select('*, subjects(name), classes(name)').eq('teacher_id', user.id).eq('lesson_date', today).order('start_time'),
-        supabase.from('syllabus_topics').select('*, subjects(name), classes(name)').order('order_index')
+        supabase
+          .from('lessons')
+          .select('*, subjects(name), classes(name)')
+          .eq('teacher_id', user.id)
+          .eq('school_id', prof.school_id)
+          .eq('lesson_date', today)
+          .order('start_time'),
+        supabase
+          .from('syllabus_topics')
+          .select('*, subjects(name), classes(name)')
+          .eq('school_id', prof.school_id)
+          .order('order_index')
       ]);
 
       setLessons(lessonRes.data || []);
@@ -306,9 +317,10 @@ By continuing to use the EduTrack Staff Terminal, you acknowledge your responsib
 
   const fetchGradesData = async () => {
     try {
+      const { data: prof } = await supabase.from('users').select('school_id').eq('id', user.id).single();
       const [classRes, subjectRes] = await Promise.all([
-        supabase.from('classes').select('*').order('name'),
-        supabase.from('subjects').select('*').order('name')
+        supabase.from('classes').select('*').eq('school_id', prof.school_id).order('name'),
+        supabase.from('subjects').select('*').eq('school_id', prof.school_id).order('name')
       ]);
       setClasses(classRes.data || []);
       setSubjects(subjectRes.data || []);
