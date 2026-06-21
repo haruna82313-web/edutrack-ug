@@ -19,6 +19,13 @@ const TERMS = [
   { value: 'Term 3', label: 'Term 3' }
 ];
 
+// Helper function to get ordinal suffix
+const getOrdinalSuffix = (number) => {
+  const suffixes = ['th', 'st', 'nd', 'rd'];
+  const v = number % 100;
+  return number + (suffixes[(v - 20) % 10] || suffixes[v] || suffixes[0]);
+};
+
 const ClassReportCards = () => {
   const { classId } = useParams();
   const navigate = useNavigate();
@@ -32,9 +39,26 @@ const ClassReportCards = () => {
   const [sendingAll, setSendingAll] = useState(false);
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear().toString());
   const [selectedTerm, setSelectedTerm] = useState('Term 1');
+  const [selectedAssessmentType, setSelectedAssessmentType] = useState('End-Term Exam');
+  const [availableAssessmentTypes, setAvailableAssessmentTypes] = useState(['End-Term Exam']);
   const [schoolInfo, setSchoolInfo] = useState(null);
   const [allMarks, setAllMarks] = useState([]);
   const [studentPositions, setStudentPositions] = useState({});
+
+  // Assessment Type Options (fallback)
+  const DEFAULT_ASSESSMENT_TYPES = [
+    'Beginning of Term',
+    'Mid-Term Exam',
+    'End-Term Exam',
+    'Test 1',
+    'Test 2',
+    'Test 3',
+    'Assignment',
+    'Quiz',
+    'Project Work',
+    'Final Report Marks',
+    'Unspecified'
+  ];
 
   // Fetch data
   const fetchData = useCallback(async () => {
@@ -64,16 +88,31 @@ const ClassReportCards = () => {
         const studentIds = stds.map(s => s.id);
         const { data: marksData, error: marksErr } = await supabase
           .from('student_marks')
-          .select('*, students(id)')
+          .select('*, subjects(name)')
           .in('student_id', studentIds)
           .eq('year', parseInt(selectedYear))
-          .eq('term', selectedTerm);
+          .eq('term', selectedTerm)
+          .eq('assessment_type', selectedAssessmentType);
         if (!marksErr && marksData) {
-          setAllMarks(marksData);
+          // Safeguard: For each student + subject, only keep the latest mark
+          const latestMarks = [];
+          const markMap = new Map();
+          
+          marksData.forEach(mark => {
+            const key = `${mark.student_id}-${mark.subject_id}`;
+            const existing = markMap.get(key);
+            if (!existing || new Date(mark.created_at) > new Date(existing.created_at)) {
+              markMap.set(key, mark);
+            }
+          });
+          
+          markMap.forEach(mark => latestMarks.push(mark));
+          setAllMarks(latestMarks);
+          
           // Calculate positions based on average marks
           const studentAverages = {};
           stds.forEach(student => {
-            const studentMarks = marksData.filter(m => m.student_id === student.id);
+            const studentMarks = latestMarks.filter(m => m.student_id === student.id);
             if (studentMarks.length > 0) {
               const total = studentMarks.reduce((sum, m) => sum + (m.marks / m.max_marks * 100), 0);
               studentAverages[student.id] = total / studentMarks.length;
@@ -82,10 +121,36 @@ const ClassReportCards = () => {
             }
           });
           // Sort students by average
-          const sortedStudentIds = [...stds].sort((a, b) => studentAverages[b.id] - studentAverages[a.id]).map(s => s.id);
+          const sortedStudents = [...stds].sort((a, b) => studentAverages[b.id] - studentAverages[a.id]);
           const positions = {};
-          sortedStudentIds.forEach((id, index) => positions[id] = index + 1);
+          // Calculate position with ties
+          let currentRank = 1;
+          for (let i = 0; i < sortedStudents.length; i++) {
+            const student = sortedStudents[i];
+            if (i > 0) {
+              const prevStudent = sortedStudents[i - 1];
+              if (studentAverages[student.id] !== studentAverages[prevStudent.id]) {
+                currentRank = i + 1;
+              }
+            }
+            positions[student.id] = currentRank;
+          }
           setStudentPositions(positions);
+        }
+
+        // Fetch available assessment types for current filters
+        const { data: assessmentTypesData, error: typesErr } = await supabase
+          .from('student_marks')
+          .select('assessment_type')
+          .in('student_id', studentIds)
+          .eq('year', parseInt(selectedYear))
+          .eq('term', selectedTerm);
+        
+        if (!typesErr && assessmentTypesData) {
+          const uniqueTypes = [...new Set(assessmentTypesData.map(m => m.assessment_type || 'Unspecified'))];
+          // Combine with default types to ensure we have all options
+          const allTypes = [...new Set([...uniqueTypes, ...DEFAULT_ASSESSMENT_TYPES])].sort();
+          setAvailableAssessmentTypes(allTypes);
         }
       }
 
@@ -112,31 +177,75 @@ const ClassReportCards = () => {
     } finally {
       setLoading(false);
     }
-  }, [classId, selectedYear, selectedTerm, showNotification]);
+  }, [classId, selectedYear, selectedTerm, selectedAssessmentType, showNotification]);
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
 
   // Get student's marks for selected term/year
-  const getStudentMarks = (studentId) => {
-    return supabase
+  const getStudentMarks = async (studentId) => {
+    const { data: marksData, error } = await supabase
       .from('student_marks')
-      .select(`*, subjects(name)`)
+      .select('*, subjects(name)')
       .eq('student_id', studentId)
       .eq('year', parseInt(selectedYear))
-      .eq('term', selectedTerm);
+      .eq('term', selectedTerm)
+      .eq('assessment_type', selectedAssessmentType);
+    
+    if (error) return [];
+    
+    // Safeguard: For each subject, only keep the latest mark
+    const latestMarks = [];
+    const markMap = new Map();
+    
+    (marksData || []).forEach(mark => {
+      const key = mark.subject_id;
+      const existing = markMap.get(key);
+      if (!existing || new Date(mark.created_at) > new Date(existing.created_at)) {
+        markMap.set(key, mark);
+      }
+    });
+    
+    markMap.forEach(mark => latestMarks.push(mark));
+    return latestMarks;
   };
 
-  // Download individual report card - Professional Design
-  const downloadReport = async (student) => {
-    const { data: marksData } = await getStudentMarks(student.id);
+  // Helper to load logo as data URL
+  const loadLogoAsDataURL = async (url) => {
+    if (!url) return null;
+    try {
+      const response = await fetch(url);
+      const blob = await response.blob();
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+    } catch (err) {
+      console.warn('Could not load logo:', err);
+      return null;
+    }
+  };
 
-    // Get attendance summary for this student
+  // Helper to generate a single report card PDF as blob
+  const generateReportCardBlob = async (student) => {
+    const marksData = await getStudentMarks(student.id);
+
+    // Get attendance summary for this student - filtered by term
     let attendanceData = { present: 0, absent: 0, rate: 0 };
     try {
-      const startDate = `${selectedYear}-01-01`;
-      const endDate = `${selectedYear}-12-31`;
+      // Map term to approximate months
+      const termMonthMap = {
+        'Term 1': { startMonth: '01', endMonth: '04', endDay: '30' },
+        'Term 2': { startMonth: '05', endMonth: '08', endDay: '31' },
+        'Term 3': { startMonth: '09', endMonth: '12', endDay: '31' }
+      };
+      const termData = termMonthMap[selectedTerm] || { startMonth: '01', endMonth: '12', endDay: '31' };
+      const startDate = `${selectedYear}-${termData.startMonth}-01`;
+      const endDate = `${selectedYear}-${termData.endMonth}-${termData.endDay}`;
+      
       const { data: attData } = await supabase
         .from('attendance')
         .select('status')
@@ -159,19 +268,36 @@ const ClassReportCards = () => {
     const accentColorLight = isALevel ? [220, 230, 245] : [230, 245, 230];
 
     try {
-      const { jsPDF } = await import('jspdf');
-      const { default: autoTable } = await import('jspdf-autotable');
-      const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
 
-      const pageWidth = doc.internal.pageSize.getWidth();
-      const pageHeight = doc.internal.pageSize.getHeight();
-      let yPos = 10;
+    const { jsPDF } = await import('jspdf');
+    const { default: autoTable } = await import('jspdf-autotable');
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
 
-      // ===== HEADER SECTION =====
-      // School Logo placeholder (circle)
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    let yPos = 10;
+
+    // ===== HEADER SECTION =====
+    // Load logo
+    const logoDataUrl = schoolInfo?.logo_url ? await loadLogoAsDataURL(schoolInfo.logo_url) : null;
+    
+    if (logoDataUrl) {
+      // Draw actual logo
+      try {
+        doc.addImage(logoDataUrl, 'PNG', pageWidth / 2 - 12, yPos, 24, 24); // Center 24x24 mm logo
+      } catch (imgErr) {
+        console.warn('Failed to draw logo on PDF:', imgErr);
+        // Fallback to circle
+        doc.setDrawColor(accentColor[0], accentColor[1], accentColor[2]);
+        doc.setFillColor(accentColor[0], accentColor[1], accentColor[2]);
+        doc.circle(pageWidth / 2, yPos + 8, 5);
+      }
+    } else {
+      // Fallback to circle placeholder
       doc.setDrawColor(accentColor[0], accentColor[1], accentColor[2]);
       doc.setFillColor(accentColor[0], accentColor[1], accentColor[2]);
       doc.circle(pageWidth / 2, yPos + 8, 5);
+    }
       
       // School Name
       doc.setFont('helvetica', 'bold');
@@ -183,7 +309,7 @@ const ClassReportCards = () => {
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(9);
       doc.setTextColor(100, 100, 100);
-      doc.text('Knowledge | Discipline | Excellence', pageWidth / 2, yPos + 21, { align: 'center' });
+      doc.text(schoolInfo?.motto || 'Knowledge | Discipline | Excellence', pageWidth / 2, yPos + 21, { align: 'center' });
 
       yPos += 28;
 
@@ -249,12 +375,18 @@ const ClassReportCards = () => {
       yPos += 10;
 
       // ===== MARKS TABLE =====
-      const tableHeaders = [['SUBJECT', 'CA (10%)', 'EXAM (70%)', 'TOTAL (100%)', 'GRADE', 'REMARK']];
+      // Simplified table headers that match the data we have
+      const tableHeaders = [['SUBJECT', 'SCORE', 'OUT OF', 'GRADE', 'REMARK']];
       const tableRows = (marksData || []).map(m => {
-        const gradeInfo = getOLevelGrade(m.marks, m.max_marks);
+        // Use saved UNEB grade if available, otherwise calculate
+        let gradeInfo;
+        if (m.grade) {
+          gradeInfo = { grade: m.grade };
+        } else {
+          gradeInfo = getOLevelGrade(m.marks, m.max_marks);
+        }
         return [
           m.subjects?.name || 'Unknown',
-          m.ca_marks || '-',
           m.marks || '-',
           m.max_marks || '-',
           gradeInfo.grade,
@@ -293,11 +425,20 @@ const ClassReportCards = () => {
       yPos = doc.lastAutoTable.finalY + 8;
 
       // ===== SUMMARY STATS =====
+      // Safeguard for empty marks data
+      const safeMarksData = marksData || [];
+      const totalMarks = safeMarksData.reduce((sum, m) => sum + (parseFloat(m.marks) || 0), 0);
+      const avgScore = safeMarksData.length > 0 ? (totalMarks / safeMarksData.length).toFixed(2) : '0.00';
+      // Calculate GPA (4.0 scale) based on percentage
+      const gpa = safeMarksData.length > 0 
+        ? ((totalMarks / (safeMarksData.reduce((sum, m) => sum + (parseFloat(m.max_marks) || 100), 0))) * 4).toFixed(2)
+        : '0.00';
+      
       const stats = [
-        { label: 'GRAND TOTAL', value: marksData.reduce((sum, m) => sum + (m.marks || 0), 0) },
-        { label: 'AVERAGE SCORE', value: ((marksData.reduce((sum, m) => sum + (m.marks || 0), 0) / marksData.length)).toFixed(2) },
-        { label: 'GRADE POINT AVERAGE (GPA)', value: '4.1' },
-        { label: 'POSITION IN CLASS', value: studentPositions[student.id] || 'N/A' },
+        { label: 'GRAND TOTAL', value: totalMarks.toFixed(0) },
+        { label: 'AVERAGE SCORE', value: avgScore },
+        { label: 'GRADE POINT AVERAGE (GPA)', value: gpa },
+        { label: 'POSITION IN CLASS', value: studentPositions[student.id] ? getOrdinalSuffix(studentPositions[student.id]) : 'N/A' },
         { label: 'OUT OF', value: students.length }
       ];
 
@@ -417,12 +558,55 @@ He is encouraged to maintain his outstanding performance.`;
       doc.text('This report is computer generated and does not require a signature.', 
         pageWidth / 2, pageHeight - 5, { align: 'center' });
 
-      const filename = `${student.full_name.replace(/\s+/g, '_')}_${selectedTerm}_${selectedYear}_Report_Card`;
-      doc.save(`${filename}.pdf`);
-      showNotification('Professional report card downloaded successfully! 📄');
+      return doc.output('blob');
     } catch (err) {
       console.error('Error generating PDF:', err);
+      throw err;
+    }
+  };
+
+  // Download individual report card
+  const downloadReport = async (student) => {
+    try {
+      const blob = await generateReportCardBlob(student);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${student.full_name.replace(/\s+/g, '_')}_${selectedTerm}_${selectedYear}_Report_Card.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+      showNotification('Professional report card downloaded successfully! 📄');
+    } catch (err) {
+      console.error('Error downloading PDF:', err);
       showNotification('Error generating PDF. Please try again.', 'error');
+    }
+  };
+
+  // Download all report cards as ZIP
+  const downloadAllReports = async () => {
+    showNotification('Generating report cards... This may take a moment.', 'info');
+    try {
+      const JSZip = (await import('jszip')).default;
+      const { saveAs } = await import('file-saver');
+      
+      const zip = new JSZip();
+      
+      for (const student of students) {
+        try {
+          const blob = await generateReportCardBlob(student);
+          const filename = `${student.full_name.replace(/\s+/g, '_')}_${selectedTerm}_${selectedYear}_Report_Card.pdf`;
+          zip.file(filename, blob);
+        } catch (err) {
+          console.error(`Failed to generate report for ${student.full_name}:`, err);
+        }
+      }
+      
+      const zipBlob = await zip.generateAsync({ type: 'blob' });
+      saveAs(zipBlob, `${classInfo?.name?.replace(/\s+/g, '_') || 'Class'}_Report_Cards_${selectedTerm}_${selectedYear}.zip`);
+      showNotification('All report cards downloaded successfully! 📦', 'success');
+    } catch (err) {
+      console.error('Error generating ZIP:', err);
+      showNotification('Failed to download all report cards. Please try again.', 'error');
     }
   };
 
@@ -432,7 +616,7 @@ He is encouraged to maintain his outstanding performance.`;
       const schoolId = schoolInfo?.id;
       
       // Fetch marks for snapshot
-      const { data: marksData } = await getStudentMarks(student.id);
+      const marksData = await getStudentMarks(student.id);
       
       // Fetch attendance summary
       let attendanceData = { present: 0, absent: 0, rate: 0 };
@@ -503,7 +687,7 @@ He is encouraged to maintain his outstanding performance.`;
         const schoolId = schoolInfo?.id;
         
         // Fetch marks for snapshot (fallback)
-        const { data: marksData } = await getStudentMarks(student.id);
+        const marksData = await getStudentMarks(student.id);
         
         // Create basic snapshot data
         const reportCardData = {
@@ -564,7 +748,7 @@ He is encouraged to maintain his outstanding performance.`;
       // Build all report card documents with snapshots
       const docs = await Promise.all(students.map(async (student) => {
         // Fetch marks for this student
-        const { data: marksData } = await getStudentMarks(student.id);
+        const marksData = await getStudentMarks(student.id);
         
         // Fetch attendance summary
         let attendanceData = { present: 0, absent: 0, rate: 0 };
@@ -712,6 +896,14 @@ He is encouraged to maintain his outstanding performance.`;
             >
               {TERMS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
             </select>
+
+            <select
+              value={selectedAssessmentType}
+              onChange={(e) => setSelectedAssessmentType(e.target.value)}
+              className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-[10px] font-bold text-white focus:outline-none focus:ring-2 focus:ring-primary-500/50"
+            >
+              {availableAssessmentTypes.map(type => <option key={type} value={type}>{type}</option>)}
+            </select>
           </div>
         </div>
       </div>
@@ -739,7 +931,7 @@ He is encouraged to maintain his outstanding performance.`;
                 {student.full_name}
               </span>
               {studentPositions[student.id] && (
-                <span className="text-[7px] font-black text-aurora-amber uppercase tracking-widest">#{studentPositions[student.id]}</span>
+                <span className="text-[7px] font-black text-aurora-amber uppercase tracking-widest">#{getOrdinalSuffix(studentPositions[student.id])}</span>
               )}
             </button>
           ))}
@@ -757,7 +949,7 @@ He is encouraged to maintain his outstanding performance.`;
             <div className="text-center">
               <h3 className="font-black text-xl lg:text-2xl text-white tracking-tight">{selectedStudent.full_name}</h3>
               {studentPositions[selectedStudent.id] && (
-                <p className="text-[9px] font-black text-aurora-amber uppercase tracking-widest mt-1">Position: #{studentPositions[selectedStudent.id]}</p>
+                <p className="text-[9px] font-black text-aurora-amber uppercase tracking-widest mt-1">Position: #{getOrdinalSuffix(studentPositions[selectedStudent.id])}</p>
               )}
             </div>
             <button onClick={nextStudent} disabled={students.indexOf(selectedStudent) === students.length - 1} className="p-2 rounded-xl bg-slate-950 text-slate-400 hover:text-white disabled:opacity-30 transition-all">
@@ -790,7 +982,7 @@ He is encouraged to maintain his outstanding performance.`;
                 <BookOpen size={14} className="text-aurora-violet" />
                 <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Academic Performance</h4>
               </div>
-              <MarksTable studentId={selectedStudent.id} year={selectedYear} term={selectedTerm} />
+              <MarksTable studentId={selectedStudent.id} year={selectedYear} term={selectedTerm} assessmentType={selectedAssessmentType} />
             </div>
 
             {/* Attendance Summary */}
@@ -834,7 +1026,10 @@ He is encouraged to maintain his outstanding performance.`;
             <p className="text-[8px] font-bold text-slate-500 uppercase tracking-widest">{students.length} Report Cards Ready</p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <button className="px-4 lg:px-5 py-2 lg:py-2.5 rounded-xl bg-white/5 border border-white/10 text-slate-300 text-[9px] font-black uppercase tracking-widest hover:bg-white/10 transition-all">
+            <button 
+              onClick={downloadAllReports}
+              className="px-4 lg:px-5 py-2 lg:py-2.5 rounded-xl bg-white/5 border border-white/10 text-slate-300 text-[9px] font-black uppercase tracking-widest hover:bg-white/10 transition-all"
+            >
               Download All (ZIP)
             </button>
             <button 
@@ -857,7 +1052,7 @@ He is encouraged to maintain his outstanding performance.`;
 };
 
 // Child component to show marks
-const MarksTable = ({ studentId, year, term }) => {
+const MarksTable = ({ studentId, year, term, assessmentType }) => {
   const [marks, setMarks] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -869,9 +1064,24 @@ const MarksTable = ({ studentId, year, term }) => {
           .select(`*, subjects(name)`)
           .eq('student_id', studentId)
           .eq('year', parseInt(year))
-          .eq('term', term);
+          .eq('term', term)
+          .eq('assessment_type', assessmentType);
         if (error) throw error;
-        setMarks(data || []);
+        
+        // Safeguard: For each subject, only keep the latest mark
+        const latestMarks = [];
+        const markMap = new Map();
+        
+        (data || []).forEach(mark => {
+          const key = mark.subject_id;
+          const existing = markMap.get(key);
+          if (!existing || new Date(mark.created_at) > new Date(existing.created_at)) {
+            markMap.set(key, mark);
+          }
+        });
+        
+        markMap.forEach(mark => latestMarks.push(mark));
+        setMarks(latestMarks);
       } catch (error) {
         console.error('Error fetching marks:', error);
       } finally {
@@ -879,7 +1089,7 @@ const MarksTable = ({ studentId, year, term }) => {
       }
     };
     fetchMarks();
-  }, [studentId, year, term]);
+  }, [studentId, year, term, assessmentType]);
 
   if (loading) return <div className="text-center py-6"><Loader2 size={18} className="animate-spin mx-auto text-slate-500" /></div>;
 
@@ -942,8 +1152,16 @@ const AttendanceSummary = ({ studentId, year, term }) => {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const startDate = `${year}-01-01`;
-        const endDate = `${year}-12-31`;
+        // Map term to approximate months
+        const termMonthMap = {
+          'Term 1': { startMonth: '01', endMonth: '04', endDay: '30' },
+          'Term 2': { startMonth: '05', endMonth: '08', endDay: '31' },
+          'Term 3': { startMonth: '09', endMonth: '12', endDay: '31' }
+        };
+        const termData = termMonthMap[term] || { startMonth: '01', endMonth: '12', endDay: '31' };
+        const startDate = `${year}-${termData.startMonth}-01`;
+        const endDate = `${year}-${termData.endMonth}-${termData.endDay}`;
+        
         const { data: attData, error } = await supabase
           .from('attendance')
           .select('status')

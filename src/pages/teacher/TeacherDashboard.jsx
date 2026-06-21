@@ -34,6 +34,8 @@ const TeacherDashboard = () => {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [filterGender, setFilterGender] = useState('all');
   const [selectedHistorySubject, setSelectedHistorySubject] = useState('');
+  const [selectedHistoryYear, setSelectedHistoryYear] = useState(new Date().getFullYear().toString());
+  const [selectedHistoryTerm, setSelectedHistoryTerm] = useState('Term 1');
   const [syllabusTopics, setSyllabusTopics] = useState([]);
   const [activeLesson, setActiveLesson] = useState(null);
   const [students, setStudents] = useState([]);
@@ -44,23 +46,47 @@ const TeacherDashboard = () => {
   
   // Preset comment options
   const COMMENT_PRESETS = [
-    { value: 'excellent', label: 'Excellent performance! Keep up the great work!' },
-    { value: 'good', label: 'Good performance. With more effort, you can excel!' },
-    { value: 'satisfactory', label: 'Satisfactory performance. Room for improvement.' },
-    { value: 'needs_improvement', label: 'Needs improvement. Let us work together.' },
-    { value: 'hardworking', label: 'Very hardworking student! Continue this way!' },
-    { value: 'attentive', label: 'Attentive and participates well in class.' },
-    { value: 'makeup', label: 'Please complete the makeup assessment.' }
+    { value: 'excellent', label: 'Excellent work! Keep it up!' },
+    { value: 'good', label: 'Good work - can do even better!' },
+    { value: 'satisfactory', label: 'Satisfactory - needs practice.' },
+    { value: 'needs_improvement', label: 'Needs improvement - let\'s work together!' },
+    { value: 'hardworking', label: 'Very hardworking - great attitude!' },
+    { value: 'attentive', label: 'Attentive - great participation!' },
+    { value: 'makeup', label: 'Please complete makeup assessment.' }
   ];
 
   // Marks state
   const [selectedClass, setSelectedClass] = useState('');
   const [selectedSubject, setSelectedSubject] = useState('');
+  const [selectedAssessmentType, setSelectedAssessmentType] = useState('End-Term Exam');
+  const [selectedTerm, setSelectedTerm] = useState('Term 1');
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear().toString());
   const [classes, setClasses] = useState([]);
   const [subjects, setSubjects] = useState([]);
   const [marks, setMarks] = useState({}); // { studentId: score }
   const [comments, setComments] = useState({}); // { studentId: commentKey }
   const [submittingMarks, setSubmittingMarks] = useState(false);
+
+  // Term Options
+  const TERMS = [
+    { value: 'Term 1', label: 'Term 1' },
+    { value: 'Term 2', label: 'Term 2' },
+    { value: 'Term 3', label: 'Term 3' }
+  ];
+
+  // Assessment Type Options
+  const ASSESSMENT_TYPES = [
+    'Beginning of Term',
+    'Mid-Term Exam',
+    'End-Term Exam',
+    'Test 1',
+    'Test 2',
+    'Test 3',
+    'Assignment',
+    'Quiz',
+    'Project Work',
+    'Final Report Marks'
+  ];
   
   // UNEB Grading State
   const [selectedLevel, setSelectedLevel] = useState('o-level'); // 'o-level' or 'a-level'
@@ -146,7 +172,7 @@ By continuing to use the EduTrack Staff Terminal, you acknowledge your responsib
     }
   };
 
-  const fetchMarksHistory = async (classId, subjectId, date) => {
+  const fetchMarksHistory = async (classId, subjectId, date, year, term) => {
     try {
       setHistoryLoading(true);
       let query = supabase
@@ -154,6 +180,14 @@ By continuing to use the EduTrack Staff Terminal, you acknowledge your responsib
         .select('*, students!inner(full_name, class_id)')
         .eq('students.class_id', classId)
         .eq('subject_id', subjectId);
+
+      if (year) {
+        query = query.eq('year', parseInt(year));
+      }
+
+      if (term) {
+        query = query.eq('term', term);
+      }
 
       if (date) {
         query = query.gte('created_at', `${date}T00:00:00`)
@@ -174,9 +208,9 @@ By continuing to use the EduTrack Staff Terminal, you acknowledge your responsib
     if (activeTab === 'attendance_history' && selectedClass) {
       fetchAttendanceHistory(selectedClass, filterDate, selectedHistorySubject);
     } else if (activeTab === 'marks_history' && selectedClass && selectedSubject) {
-      fetchMarksHistory(selectedClass, selectedSubject, filterDate);
+      fetchMarksHistory(selectedClass, selectedSubject, filterDate, selectedHistoryYear, selectedHistoryTerm);
     }
-  }, [activeTab, selectedClass, selectedSubject, selectedHistorySubject, filterDate]);
+  }, [activeTab, selectedClass, selectedSubject, selectedHistorySubject, filterDate, selectedHistoryYear, selectedHistoryTerm]);
 
   useEffect(() => {
     let subChannel;
@@ -307,7 +341,7 @@ By continuing to use the EduTrack Staff Terminal, you acknowledge your responsib
           const commentText = selectedComment 
             ? COMMENT_PRESETS.find(c => c.value === selectedComment)?.label 
             : null;
-            
+          
           return {
             student_id: studentId,
             subject_id: selectedSubject,
@@ -315,10 +349,11 @@ By continuing to use the EduTrack Staff Terminal, you acknowledge your responsib
             marks: parseFloat(score),
             max_marks: 100,
             school_id: profile.school_id,
-            year: 2026,
-            term: 'Term 1', // Default term
+            year: parseInt(selectedYear),
+            term: selectedTerm,
             comments: commentText,
-            is_published: true // Make sure parents can see the marks!
+            is_published: true,
+            assessment_type: selectedAssessmentType // NEW: Assessment type
           };
         });
 
@@ -763,7 +798,7 @@ By continuing to use the EduTrack Staff Terminal, you acknowledge your responsib
           {activeTab === 'grades' && (
             <div className="space-y-6">
               <div className="bg-slate-900 p-6 lg:p-8 rounded-3xl border border-slate-800 shadow-xl">
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
                   <div className="space-y-2">
                     <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Select Class</label>
                     <select 
@@ -787,6 +822,39 @@ By continuing to use the EduTrack Staff Terminal, you acknowledge your responsib
                     >
                       <option value="">Choose Subject</option>
                       {subjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Year</label>
+                    <select 
+                      className="input-field appearance-none"
+                      value={selectedYear}
+                      onChange={(e) => setSelectedYear(e.target.value)}
+                    >
+                      {[...Array(5)].map((_, i) => {
+                        const y = new Date().getFullYear() - 2 + i;
+                        return <option key={y} value={y}>{y}</option>;
+                      })}
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Term</label>
+                    <select 
+                      className="input-field appearance-none"
+                      value={selectedTerm}
+                      onChange={(e) => setSelectedTerm(e.target.value)}
+                    >
+                      {TERMS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Assessment Type</label>
+                    <select 
+                      className="input-field appearance-none"
+                      value={selectedAssessmentType}
+                      onChange={(e) => setSelectedAssessmentType(e.target.value)}
+                    >
+                      {ASSESSMENT_TYPES.map(type => <option key={type} value={type}>{type}</option>)}
                     </select>
                   </div>
                   <div className="space-y-2">
@@ -836,21 +904,21 @@ By continuing to use the EduTrack Staff Terminal, you acknowledge your responsib
                             <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest">{s.gender || 'Not Specified'}</span>
                           </div>
                         </div>
-                        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 w-full sm:w-auto">
-                          <div className="flex items-center gap-3">
+                        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 w-full sm:w-auto">
+                          <div className="flex items-center gap-2 w-full sm:w-auto">
                             <input 
                               type="number"
                               placeholder="0"
                               min="0"
                               max="100"
-                              className="w-20 lg:w-24 bg-slate-950 border border-slate-800 rounded-xl px-4 py-2 text-center font-black text-primary-400 focus:border-primary-500 outline-none transition-all"
+                              className="w-20 lg:w-24 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-center font-black text-primary-400 focus:border-primary-500 outline-none transition-all"
                               value={marks[s.id] || ''}
                               onChange={(e) => setMarks(prev => ({ ...prev, [s.id]: e.target.value }))}
                             />
                             <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">/ 100</span>
                           </div>
                           <select 
-                            className="flex-1 sm:flex-none bg-slate-950 border border-slate-800 rounded-xl px-4 py-2 text-[10px] font-black text-slate-300 uppercase tracking-widest focus:border-primary-500 outline-none transition-all"
+                            className="w-full sm:flex-none bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-[9px] font-black text-slate-300 uppercase tracking-widest focus:border-primary-500 outline-none transition-all truncate"
                             value={comments[s.id] || ''}
                             onChange={(e) => setComments(prev => ({ ...prev, [s.id]: e.target.value }))}
                           >
@@ -1009,6 +1077,23 @@ By continuing to use the EduTrack Staff Terminal, you acknowledge your responsib
                   >
                     <option value="">Subject</option>
                     {subjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  </select>
+                  <select 
+                    className="bg-slate-950 border border-white/10 rounded-xl px-4 py-2 text-[10px] font-black uppercase tracking-widest text-white outline-none focus:border-amber-500/50 transition-all"
+                    value={selectedHistoryYear}
+                    onChange={(e) => setSelectedHistoryYear(e.target.value)}
+                  >
+                    {[...Array(5)].map((_, i) => {
+                      const y = new Date().getFullYear() - 2 + i;
+                      return <option key={y} value={y}>{y}</option>;
+                    })}
+                  </select>
+                  <select 
+                    className="bg-slate-950 border border-white/10 rounded-xl px-4 py-2 text-[10px] font-black uppercase tracking-widest text-white outline-none focus:border-amber-500/50 transition-all"
+                    value={selectedHistoryTerm}
+                    onChange={(e) => setSelectedHistoryTerm(e.target.value)}
+                  >
+                    {TERMS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                   </select>
                   <input 
                     type="date" 
