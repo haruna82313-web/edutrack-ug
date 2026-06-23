@@ -42,40 +42,64 @@ export const calculateOLevelTotal = (aoiScores, summativeScore) => {
 
 /**
  * Get O-Level grade and descriptor from score
- * @param {number} score - Score out of 100
- * @returns {Object} { grade: string, descriptor: string }
+ * @param {number|Array} score - Either score out of 100, OR [marks, max_marks] to calculate percentage
+ * @param {number} [maxMarks] - Optional max marks if first param is raw score
+ * @returns {Object} { grade: string, descriptor: string, description: string } (both descriptor and description for compatibility)
  */
-export const getOLevelGrade = (score) => {
-  if (score >= 80) return { grade: 'A', descriptor: 'Exceptional' };
-  if (score >= 70) return { grade: 'B', descriptor: 'Outstanding' };
-  if (score >= 50) return { grade: 'C', descriptor: 'Satisfactory' };
-  if (score >= 40) return { grade: 'D', descriptor: 'Basic' };
-  return { grade: 'E', descriptor: 'Elementary' };
+export const getOLevelGrade = (score, maxMarks) => {
+  let finalScore = score;
+  
+  // If two arguments are passed: [marks, maxMarks]
+  if (typeof maxMarks === 'number' && maxMarks > 0) {
+    finalScore = (score / maxMarks) * 100;
+  }
+
+  if (finalScore >= 80) return { grade: 'A', descriptor: 'Exceptional', description: 'Exceptional' };
+  if (finalScore >= 70) return { grade: 'B', descriptor: 'Outstanding', description: 'Outstanding' };
+  if (finalScore >= 50) return { grade: 'C', descriptor: 'Satisfactory', description: 'Satisfactory' };
+  if (finalScore >= 40) return { grade: 'D', descriptor: 'Basic', description: 'Basic' };
+  return { grade: 'E', descriptor: 'Elementary', description: 'Elementary' };
 };
 
 /**
  * Get A-Level Principal subject grade and points
- * @param {number} score - Score out of 100
- * @returns {Object} { grade: string, points: number, descriptor: string }
+ * @param {number|Array} score - Either score out of 100, OR [marks, max_marks] to calculate percentage
+ * @param {number} [maxMarks] - Optional max marks if first param is raw score
+ * @returns {Object} { grade: string, points: number, descriptor: string, description: string } (both descriptor and description for compatibility)
  */
-export const getALevelPrincipalGradeAndPoints = (score) => {
-  if (score >= 80) return { grade: 'A', points: 6, descriptor: 'Exceptional Understanding' };
-  if (score >= 70) return { grade: 'B', points: 5, descriptor: 'Outstanding Performance' };
-  if (score >= 60) return { grade: 'C', points: 4, descriptor: 'Satisfactory Performance' };
-  if (score >= 50) return { grade: 'D', points: 3, descriptor: 'Basic Understanding' };
-  if (score >= 40) return { grade: 'E', points: 2, descriptor: 'Elementary Understanding' };
-  if (score >= 35) return { grade: 'O', points: 1, descriptor: 'Subsidiary Pass Level' };
-  return { grade: 'F', points: 0, descriptor: 'Fail' };
+export const getALevelPrincipalGradeAndPoints = (score, maxMarks) => {
+  let finalScore = score;
+  
+  // If two arguments are passed: [marks, maxMarks]
+  if (typeof maxMarks === 'number' && maxMarks > 0) {
+    finalScore = (score / maxMarks) * 100;
+  }
+
+  if (finalScore >= 80) return { grade: 'A', points: 6, descriptor: 'Exceptional Understanding', description: 'Exceptional Understanding' };
+  if (finalScore >= 70) return { grade: 'B', points: 5, descriptor: 'Outstanding Performance', description: 'Outstanding Performance' };
+  if (finalScore >= 60) return { grade: 'C', points: 4, descriptor: 'Satisfactory Performance', description: 'Satisfactory Performance' };
+  if (finalScore >= 50) return { grade: 'D', points: 3, descriptor: 'Basic Understanding', description: 'Basic Understanding' };
+  if (finalScore >= 40) return { grade: 'E', points: 2, descriptor: 'Elementary Understanding', description: 'Elementary Understanding' };
+  if (finalScore >= 35) return { grade: 'O', points: 1, descriptor: 'Subsidiary Pass Level', description: 'Subsidiary Pass Level' };
+  return { grade: 'F', points: 0, descriptor: 'Fail', description: 'Fail' };
 };
 
 /**
  * Get A-Level Subsidiary grade and points (GP, Sub-Maths, ICT)
- * @param {number} score - Score out of 100
- * @returns {Object} { grade: string, points: number }
+ * @param {number|Array} score - Either score out of 100, OR [marks, max_marks] to calculate percentage
+ * @param {number} [maxMarks] - Optional max marks if first param is raw score
+ * @returns {Object} { grade: string, points: number, descriptor: string, description: string } (both descriptor and description for compatibility)
  */
-export const getALevelSubsidiaryGradeAndPoints = (score) => {
-  if (score >= 50) return { grade: 'Pass (O)', points: 1 };
-  return { grade: 'Fail (F)', points: 0 };
+export const getALevelSubsidiaryGradeAndPoints = (score, maxMarks) => {
+  let finalScore = score;
+  
+  // If two arguments are passed: [marks, maxMarks]
+  if (typeof maxMarks === 'number' && maxMarks > 0) {
+    finalScore = (score / maxMarks) * 100;
+  }
+
+  if (finalScore >= 50) return { grade: 'Pass (O)', points: 1, descriptor: 'Pass', description: 'Pass' };
+  return { grade: 'Fail (F)', points: 0, descriptor: 'Fail', description: 'Fail' };
 };
 
 /**
@@ -121,4 +145,46 @@ export const determineOLevelResultStatus = (marks) => {
   if (hasAtLeastD) return 'Result 1';
   if (allE) return 'Result 3';
   return 'Result 2';
+};
+
+/**
+ * Get Primary grade and descriptor from score using custom config
+ * @param {number|Array} score - Either score out of 100, OR [marks, max_marks] to calculate percentage
+ * @param {Array} gradingConfigs - Array of { grade_name, description, min_score, max_score }
+ * @param {number} [maxMarks] - Optional max marks if first param is raw score
+ * @returns {Object} { grade: string, descriptor: string, description: string }
+ */
+export const getPrimaryGrade = (score, gradingConfigs, maxMarks) => {
+  let finalScore = score;
+  
+  // If three arguments are passed: [marks, maxMarks, configs]
+  if (Array.isArray(gradingConfigs) && typeof maxMarks !== 'number') {
+    // Swap: score is [marks, max], gradingConfigs is maxMarks? No, wait, let's handle properly
+    if (Array.isArray(score) && score.length === 2) {
+      maxMarks = score[1];
+      finalScore = (score[0] / maxMarks) * 100;
+    }
+  } else if (typeof maxMarks === 'number' && maxMarks > 0) {
+    finalScore = (score / maxMarks) * 100;
+  }
+
+  // Find matching config
+  const matchingConfig = (gradingConfigs || []).find(config => 
+    finalScore >= config.min_score && finalScore <= config.max_score
+  );
+
+  if (matchingConfig) {
+    return { 
+      grade: matchingConfig.grade_name, 
+      descriptor: matchingConfig.description, 
+      description: matchingConfig.description 
+    };
+  }
+
+  // Fallback if no config matches
+  return { 
+    grade: 'N/A', 
+    descriptor: 'No Grade', 
+    description: 'No Grade' 
+  };
 };

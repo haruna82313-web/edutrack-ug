@@ -29,7 +29,10 @@ import {
 
 const AdminDashboard = () => {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
+  const schoolType = profile?.schools?.type || 'secondary';
+  const isPrimary = schoolType === 'primary';
+  
   const [stats, setStats] = useState({ 
     present: 0, 
     absent: 0, 
@@ -180,9 +183,10 @@ const AdminDashboard = () => {
       const participationRate =
         totalLessons > 0 ? Math.round((completedLessons / totalLessons) * 100) : 0;
 
-      // Student Gender Stats
+      // Student Gender Stats (only active)
       let studentQuery = supabase.from('students').select('gender');
       if (schoolId) studentQuery = studentQuery.eq('school_id', schoolId);
+      studentQuery = studentQuery.eq('status', 'active');
       const { data: studentData } = await studentQuery;
       
       const maleStudents = studentData?.filter(s => s.gender === 'Male').length || 0;
@@ -214,18 +218,81 @@ const AdminDashboard = () => {
 
   /** 4 columns × 3 rows = 12 hub modules */
   const hubItems = [
-    { label: 'Students', icon: Users, to: '/students', color: 'border-aurora-cyan text-aurora-cyan' },
-    { label: 'Teachers', icon: UserX, to: '/teachers', color: 'border-aurora-amber text-aurora-amber' },
-    { label: 'Guardians', icon: ShieldCheck, to: '/admin/parents', color: 'border-aurora-violet text-aurora-violet' },
-    { label: 'Classes', icon: Target, to: '/classes', color: 'border-aurora-violet text-aurora-violet' },
-    { label: 'Subjects', icon: Award, to: '/subjects', color: 'border-aurora-rose text-aurora-rose' },
-    { label: 'Lessons', icon: Calendar, to: '/lessons', color: 'border-aurora-cyan text-aurora-cyan' },
-    { label: 'Timetables', icon: Grid3X3, to: '/timetables', color: 'border-aurora-emerald text-aurora-emerald' },
-    { label: 'Syllabus', icon: BookOpen, to: '/syllabus', color: 'border-aurora-violet text-aurora-violet' },
-    { label: 'Reports', icon: PieChart, to: '/reports', color: 'border-aurora-emerald text-aurora-emerald' },
-    { label: 'Documents', icon: FolderOpen, to: '/documents', color: 'border-aurora-amber text-aurora-amber' },
-    { label: 'Export PDF', icon: FileText, to: '/export?format=pdf', color: 'border-aurora-rose text-aurora-rose' },
-    { label: 'Export Excel', icon: FileSpreadsheet, to: '/export?format=excel', color: 'border-aurora-cyan text-aurora-cyan' },
+    // Row 1: Green
+    { 
+      label: 'Students', 
+      icon: Users, 
+      to: '/students', 
+      color: isPrimary ? 'border-emerald-500 text-emerald-400' : 'border-aurora-cyan text-aurora-cyan' 
+    },
+    { 
+      label: 'Teachers', 
+      icon: UserX, 
+      to: '/teachers', 
+      color: isPrimary ? 'border-emerald-500 text-emerald-400' : 'border-aurora-amber text-aurora-amber' 
+    },
+    { 
+      label: 'Guardians', 
+      icon: ShieldCheck, 
+      to: '/admin/parents', 
+      color: isPrimary ? 'border-emerald-500 text-emerald-400' : 'border-aurora-violet text-aurora-violet' 
+    },
+    { 
+      label: 'Classes', 
+      icon: Target, 
+      to: '/classes', 
+      color: isPrimary ? 'border-emerald-500 text-emerald-400' : 'border-aurora-violet text-aurora-violet' 
+    },
+    // Row 2: Gold/Amber
+    { 
+      label: 'Subjects', 
+      icon: Award, 
+      to: '/subjects', 
+      color: isPrimary ? 'border-amber-500 text-amber-400' : 'border-aurora-rose text-aurora-rose' 
+    },
+    { 
+      label: 'Lessons', 
+      icon: Calendar, 
+      to: '/lessons', 
+      color: isPrimary ? 'border-amber-500 text-amber-400' : 'border-aurora-cyan text-aurora-cyan' 
+    },
+    { 
+      label: 'Timetables', 
+      icon: Grid3X3, 
+      to: '/timetables', 
+      color: isPrimary ? 'border-amber-500 text-amber-400' : 'border-aurora-emerald text-aurora-emerald' 
+    },
+    { 
+      label: 'Syllabus', 
+      icon: BookOpen, 
+      to: '/syllabus', 
+      color: isPrimary ? 'border-amber-500 text-amber-400' : 'border-aurora-violet text-aurora-violet' 
+    },
+    // Row3: Blue
+    { 
+      label: 'Reports', 
+      icon: PieChart, 
+      to: '/reports', 
+      color: isPrimary ? 'border-blue-500 text-blue-400' : 'border-aurora-emerald text-aurora-emerald' 
+    },
+    { 
+      label: 'Documents', 
+      icon: FolderOpen, 
+      to: '/documents', 
+      color: isPrimary ? 'border-blue-500 text-blue-400' : 'border-aurora-amber text-aurora-amber' 
+    },
+    { 
+      label: 'Export PDF', 
+      icon: FileText, 
+      to: '/export?format=pdf', 
+      color: isPrimary ? 'border-blue-500 text-blue-400' : 'border-aurora-rose text-aurora-rose' 
+    },
+    { 
+      label: 'Export Excel', 
+      icon: FileSpreadsheet, 
+      to: '/export?format=excel', 
+      color: isPrimary ? 'border-blue-500 text-blue-400' : 'border-aurora-cyan text-aurora-cyan' 
+    },
   ];
 
   if (loading) {
@@ -340,32 +407,32 @@ const AdminDashboard = () => {
           value={`${stats.maleStudents + stats.femaleStudents}`}
           subValue={`M: ${stats.maleStudents} | F: ${stats.femaleStudents}`}
           icon={<Users size={24} />}
-          color={isSubscribed ? "text-aurora-cyan" : "text-slate-700"}
-          glow={isSubscribed ? "shadow-neon-cyan" : ""}
+          color={isSubscribed ? (isPrimary ? "text-emerald-400" : "text-aurora-cyan") : "text-slate-700"}
+          glow={isSubscribed ? (isPrimary ? "shadow-[0_0_30px_rgba(16,185,129,0.3)]" : "shadow-neon-cyan") : ""}
         />
         <InsightCard
           label="Total Teachers"
           value={`${stats.maleTeachers + stats.femaleTeachers}`}
           subValue={`M: ${stats.maleTeachers} | F: ${stats.femaleTeachers}`}
           icon={<UserX size={24} />}
-          color={isSubscribed ? "text-aurora-amber" : "text-slate-700"}
-          glow={isSubscribed ? "shadow-neon-amber" : ""}
+          color={isSubscribed ? (isPrimary ? "text-amber-400" : "text-aurora-amber") : "text-slate-700"}
+          glow={isSubscribed ? (isPrimary ? "shadow-[0_0_30px_rgba(245,158,11,0.3)]" : "shadow-neon-amber") : ""}
         />
         <InsightCard
           label="On-Site Today"
           value={`${stats.present} Students`}
           subValue={`${stats.absent} Absentees Flagged`}
           icon={<CheckSquare size={24} />}
-          color={isSubscribed ? "text-aurora-emerald" : "text-slate-700"}
-          glow={isSubscribed ? "shadow-neon-emerald" : ""}
+          color={isSubscribed ? (isPrimary ? "text-blue-400" : "text-aurora-emerald") : "text-slate-700"}
+          glow={isSubscribed ? (isPrimary ? "shadow-[0_0_30px_rgba(59,130,246,0.3)]" : "shadow-neon-emerald") : ""}
         />
         <InsightCard
           label="Instructional Flow"
           value={`${stats.participation}%`}
           subValue="Daily Syllabus Progress"
           icon={<TrendingUp size={24} />}
-          color={isSubscribed ? "text-aurora-rose" : "text-slate-700"}
-          glow={isSubscribed ? "shadow-neon-rose" : ""}
+          color={isSubscribed ? (isPrimary ? "text-emerald-500" : "text-aurora-rose") : "text-slate-700"}
+          glow={isSubscribed ? (isPrimary ? "shadow-[0_0_30px_rgba(16,185,129,0.3)]" : "shadow-neon-rose") : ""}
         />
       </div>
 

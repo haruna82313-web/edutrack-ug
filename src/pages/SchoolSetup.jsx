@@ -4,7 +4,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { GraduationCap, ArrowRight, Loader2, School, Eye, EyeOff } from 'lucide-react';
 
 const SchoolSetup = () => {
-  const [formData, setFormData] = useState({ schoolName: '', adminName: '', email: '', password: '' });
+  const [formData, setFormData] = useState({ schoolName: '', adminName: '', email: '', password: '', schoolType: 'secondary' });
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const navigate = useNavigate();
@@ -17,7 +17,7 @@ const SchoolSetup = () => {
       // 1. Create the School
       const { data: school, error: schoolErr } = await supabase
         .from('schools')
-        .insert([{ name: formData.schoolName }])
+        .insert([{ name: formData.schoolName, type: formData.schoolType }])
         .select()
         .single();
 
@@ -77,6 +77,53 @@ const SchoolSetup = () => {
               onChange={(e) => setFormData({...formData, schoolName: e.target.value})} 
               required 
             />
+          </div>
+
+          <div className="sm:col-span-2">
+            <label className="block text-[9px] font-black text-slate-500 uppercase tracking-[0.2em] mb-1.5 ml-1">School Mode</label>
+            <div className="grid grid-cols-2 gap-3">
+              <label
+                className={`cursor-pointer p-4 sm:p-5 rounded-2xl border-2 transition-all ${
+                  formData.schoolType === 'primary'
+                    ? 'border-emerald-500 bg-emerald-500/10 text-emerald-400'
+                    : 'border-white/5 bg-white/[0.02] text-slate-500 hover:border-white/10'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="schoolType"
+                  value="primary"
+                  checked={formData.schoolType === 'primary'}
+                  onChange={(e) => setFormData({ ...formData, schoolType: e.target.value })}
+                  className="hidden"
+                />
+                <div className="text-center">
+                  <div className="text-sm sm:text-base font-black mb-1">Primary School</div>
+                  <div className="text-[7px] sm:text-[8px] uppercase tracking-widest">P1 - P7</div>
+                </div>
+              </label>
+
+              <label
+                className={`cursor-pointer p-4 sm:p-5 rounded-2xl border-2 transition-all ${
+                  formData.schoolType === 'secondary'
+                    ? 'border-primary-500 bg-primary-500/10 text-primary-400'
+                    : 'border-white/5 bg-white/[0.02] text-slate-500 hover:border-white/10'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="schoolType"
+                  value="secondary"
+                  checked={formData.schoolType === 'secondary'}
+                  onChange={(e) => setFormData({ ...formData, schoolType: e.target.value })}
+                  className="hidden"
+                />
+                <div className="text-center">
+                  <div className="text-sm sm:text-base font-black mb-1">Secondary School</div>
+                  <div className="text-[7px] sm:text-[8px] uppercase tracking-widest">S1 - S6 (UNEB)</div>
+                </div>
+              </label>
+            </div>
           </div>
 
           <div>

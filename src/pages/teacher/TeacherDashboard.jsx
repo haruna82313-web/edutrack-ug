@@ -332,7 +332,12 @@ By continuing to use the EduTrack Staff Terminal, you acknowledge your responsib
   const fetchStudentsForMarks = async (classId) => {
     if (!classId) return;
     setLoading(true);
-    const { data } = await supabase.from('students').select('*').eq('class_id', classId).order('full_name');
+    const { data } = await supabase
+      .from('students')
+      .select('*')
+      .eq('class_id', classId)
+      .eq('status', 'active')
+      .order('full_name');
     setStudents(data || []);
     setMarks({});
     setComments({});
@@ -358,6 +363,7 @@ By continuing to use the EduTrack Staff Terminal, you acknowledge your responsib
             student_id: studentId,
             subject_id: selectedSubject,
             teacher_id: user.id,
+            class_id: selectedClass, // NEW: Save the class this mark was recorded in!
             marks: parseFloat(score),
             max_marks: 100,
             school_id: profile.school_id,

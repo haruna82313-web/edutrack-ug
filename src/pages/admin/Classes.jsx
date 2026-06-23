@@ -10,7 +10,7 @@ import { deleteClassCascade } from '../../lib/adminCrud';
 import { useNotification } from '../../context/NotificationContext';
 
 const Classes = () => {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const { showNotification } = useNotification();
   const navigate = useNavigate();
   const [classes, setClasses] = useState([]);
@@ -21,20 +21,27 @@ const Classes = () => {
   const [saving, setSaving] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
 
+  const schoolType = profile?.schools?.type || 'secondary';
+  const placeholder = schoolType === 'primary' ? 'e.g. Primary 5 East' : 'e.g. Senior 4 West';
+
   const filteredClasses = classes.filter(cls => 
     cls.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const totalFilteredStudents = filteredClasses.reduce((acc, cls) => acc + (cls.students?.length || 0), 0);
-  const totalFilteredMales = filteredClasses.reduce((acc, cls) => acc + (cls.students?.filter(s => s.gender === 'Male').length || 0), 0);
-  const totalFilteredFemales = filteredClasses.reduce((acc, cls) => acc + (cls.students?.filter(s => s.gender === 'Female').length || 0), 0);
+  // Helper to get only enrolled students (active or suspended)
+  const getEnrolledStudents = (students) => 
+    students?.filter(s => s.status === 'active' || s.status === 'suspended') || [];
+
+  const totalFilteredStudents = filteredClasses.reduce((acc, cls) => acc + getEnrolledStudents(cls.students).length, 0);
+  const totalFilteredMales = filteredClasses.reduce((acc, cls) => acc + getEnrolledStudents(cls.students).filter(s => s.gender === 'Male').length, 0);
+  const totalFilteredFemales = filteredClasses.reduce((acc, cls) => acc + getEnrolledStudents(cls.students).filter(s => s.gender === 'Female').length, 0);
 
   const fetchClasses = async () => {
     try {
       setLoading(true);
       const { data, error } = await supabase
         .from('classes')
-        .select('*, students(gender)')
+        .select('*, students(gender, status)')
         .order('name', { ascending: true });
 
       if (error) throw error;
@@ -161,7 +168,7 @@ const Classes = () => {
           <div className="flex-1 relative">
             <input
               type="text"
-              placeholder="e.g. Senior 4 West"
+              placeholder={placeholder}
               className="input-field pl-11 text-sm lg:text-base"
               value={className}
               onChange={(e) => setClassName(e.target.value)}
@@ -209,9 +216,10 @@ const Classes = () => {
                 </thead>
                 <tbody className="divide-y divide-slate-800">
                   {filteredClasses.map((cls) => {
-                    const totalStudents = cls.students?.length || 0;
-                    const maleStudents = cls.students?.filter(s => s.gender === 'Male').length || 0;
-                    const femaleStudents = cls.students?.filter(s => s.gender === 'Female').length || 0;
+                    const enrolledStudents = getEnrolledStudents(cls.students);
+                    const totalStudents = enrolledStudents.length;
+                    const maleStudents = enrolledStudents.filter(s => s.gender === 'Male').length;
+                    const femaleStudents = enrolledStudents.filter(s => s.gender === 'Female').length;
                     
                     return (
                       <tr 
@@ -263,9 +271,10 @@ const Classes = () => {
             {/* Mobile Card View */}
             <div className="grid grid-cols-1 gap-3 md:hidden">
               {filteredClasses.map((cls) => {
-                const totalStudents = cls.students?.length || 0;
-                const maleStudents = cls.students?.filter(s => s.gender === 'Male').length || 0;
-                const femaleStudents = cls.students?.filter(s => s.gender === 'Female').length || 0;
+                const enrolledStudents = getEnrolledStudents(cls.students);
+                const totalStudents = enrolledStudents.length;
+                const maleStudents = enrolledStudents.filter(s => s.gender === 'Male').length;
+                const femaleStudents = enrolledStudents.filter(s => s.gender === 'Female').length;
 
                 return (
                   <div 

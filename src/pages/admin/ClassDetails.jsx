@@ -4,7 +4,7 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { 
   Users, ChevronLeft, Phone, UserPlus, Trash2, X,
-  Loader2, GraduationCap, Calendar, BookOpen, ArrowRight, Star, ShieldCheck, Target, TrendingUp, FileSpreadsheet, FileText
+  Loader2, GraduationCap, Calendar, BookOpen, ArrowRight, Star, ShieldCheck, Target, TrendingUp, FileSpreadsheet, FileText, CheckSquare, Square, ArrowUp
 } from 'lucide-react';
 import StudentDetailsModal from '../../components/admin/StudentDetailsModal';
 
@@ -16,16 +16,30 @@ const LEADERSHIP_ROLES = [
   { value: 'religious_leader', label: 'Religious Leader' },
 ];
 
+const STUDENT_STATUSES = [
+  { value: 'active', label: 'Active', color: 'emerald' },
+  { value: 'suspended', label: 'Suspended', color: 'red' },
+  { value: 'inactive', label: 'Inactive', color: 'slate' },
+  { value: 'graduated', label: 'Graduated', color: 'blue' },
+  { value: 'transferred', label: 'Transferred', color: 'amber' },
+];
+
 const ClassDetails = () => {
   const { classId } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [classInfo, setClassInfo] = useState(null);
   const [students, setStudents] = useState([]);
+  const [allClasses, setAllClasses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [showDetails, setShowDetails] = useState(false);
   const [filterDate, setFilterDate] = useState('');
   const [filterGender, setFilterGender] = useState('all');
+  const [selectedStudents, setSelectedStudents] = useState(new Set());
+  const [showPromotionModal, setShowPromotionModal] = useState(false);
+  const [targetClassId, setTargetClassId] = useState('');
+  const [promoting, setPromoting] = useState(false);
   const [stats, setStats] = useState({
     attendanceRate: 0,
     performance: 0,
@@ -49,12 +63,23 @@ const ClassDetails = () => {
 
       if (clsErr) throw clsErr;
       setClassInfo(cls);
+      
+      // Get school ID
+      const { data: profile } = await supabase.from('users').select('school_id').eq('id', user.id).single();
+      const schoolId = profile?.school_id;
+      
+      // 2. Fetch All Other Classes (for promotion)
+      const { data: allCls, error: allClsErr } = schoolId 
+        ? await supabase.from('classes').select('*').eq('school_id', schoolId).order('name') 
+        : await supabase.from('classes').select('*').order('name');
+      if (!allClsErr) setAllClasses(allCls || []);
 
-      // 2. Fetch Students for this class
+      // 2. Fetch Students for this class (only active and suspended)
       const { data: stds, error: stdsErr } = await supabase
         .from('students')
         .select('*')
         .eq('class_id', classId)
+        .in('status', ['active', 'suspended'])
         .order('full_name');
 
       if (stdsErr) throw stdsErr;
@@ -130,11 +155,53 @@ const ClassDetails = () => {
 
   const maleCount = filteredStudents.filter(s => s.gender === 'Male').length;
   const femaleCount = filteredStudents.filter(s => s.gender === 'Female').length;
+  
+  const toggleStudentSelect = (studentId) => {
+    setSelectedStudents(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(studentId)) {
+        newSet.delete(studentId);
+      } else {
+        newSet.add(studentId);
+      }
+      return newSet;
+    });
+  };
+  
+  const toggleSelectAll = () => {
+    if (selectedStudents.size === filteredStudents.length) {
+      setSelectedStudents(new Set());
+    } else {
+      setSelectedStudents(new Set(filteredStudents.map(s => s.id)));
+    }
+  };
+  
+  const handleBulkPromote = async () => {
+    if (!targetClassId || selectedStudents.size === 0) return;
+    setPromoting(true);
+    try {
+      const { error } = await supabase
+        .from('students')
+        .update({ class_id: targetClassId })
+        .in('id', Array.from(selectedStudents));
+      
+      if (error) throw error;
+      
+      setShowPromotionModal(false);
+      setSelectedStudents(new Set());
+      setTargetClassId('');
+      fetchClassData();
+    } catch (err) {
+      console.error('Error promoting students:', err);
+    } finally {
+      setPromoting(false);
+    }
+  };
 
   if (loading) {
     return (
       <div className="h-[60vh] flex flex-col items-center justify-center">
-        <Loader2 className="animate-spin text-primary-400 mb-4" size={40} />
+        <Loader2 className="animate-spin text-primary-400 mb-4" size={32} />
         <p className="text-slate-600 font-bold uppercase tracking-widest text-[10px]">Accessing Class Registry...</p>
       </div>
     );
@@ -146,7 +213,7 @@ const ClassDetails = () => {
       <div className="flex flex-col gap-5">
         <button 
           onClick={() => navigate('/classes')}
-          className="flex items-center gap-2 text-primary-400 font-black text-[9px] lg:text-[10px] uppercase tracking-widest hover:gap-3 transition-all self-start"
+          className="flex items-center gap-2 text-primary-400 font-black text-[10px] lg:text-[10px] uppercase tracking-widest hover:gap-3 transition-all self-start"
         >
           <ChevronLeft size={14} /> Back to Registry
         </button>
@@ -154,13 +221,13 @@ const ClassDetails = () => {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div className="flex items-center gap-4 lg:gap-5">
             <div className="w-12 h-12 lg:w-16 lg:h-16 bg-slate-900 text-primary-400 rounded-2xl lg:rounded-3xl flex items-center justify-center shadow-2xl border border-slate-800 shrink-0">
-              <GraduationCap size={24} lg:size={32} />
+              <GraduationCap size={24} />
             </div>
             <div className="min-w-0">
               <h2 className="text-2xl lg:text-4xl font-black text-white tracking-tight truncate leading-tight">{classInfo?.name}</h2>
               <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 mt-1">
                 <span className="text-slate-400 font-black text-[10px] lg:text-sm flex items-center gap-1.5 uppercase tracking-wide">
-                  <Users size={14} lg:size={16} className="text-primary-500 shrink-0" /> {filteredStudents.length} Enrolled
+                  <Users size={14} className="text-primary-500 shrink-0" /> {filteredStudents.length} Enrolled
                 </span>
                 <span className="hidden sm:block w-1 h-1 bg-slate-800 rounded-full"></span>
                 <div className="flex items-center gap-3">
@@ -173,7 +240,7 @@ const ClassDetails = () => {
                 </div>
                 <span className="hidden sm:block w-1 h-1 bg-slate-800 rounded-full"></span>
                 <span className="text-slate-400 font-black text-[10px] lg:text-sm flex items-center gap-1.5 uppercase tracking-wide">
-                  <Calendar size={14} lg:size={16} className="text-primary-500 shrink-0" /> Active Cycle 2026
+                  <Calendar size={14} className="text-primary-500 shrink-0" /> Active Cycle 2026
                 </span>
               </div>
             </div>
@@ -211,13 +278,13 @@ const ClassDetails = () => {
               to={`/classes/${classId}/reports`} 
               className="btn-primary py-3 lg:py-4 px-6 lg:px-8 shadow-glow self-start md:self-auto text-[10px] lg:text-xs font-black uppercase tracking-widest"
             >
-              <FileText size={16} lg:size={18} /> Report Cards
+              <FileText size={16} /> Report Cards
             </Link>
             <Link 
               to="/students" 
               className="py-3 lg:py-4 px-6 lg:px-8 bg-white/5 border border-white/10 rounded-2xl text-slate-300 text-[10px] lg:text-xs font-black uppercase tracking-widest hover:bg-white/10 transition-all self-start md:self-auto"
             >
-              <UserPlus size={16} lg:size={18} /> Enroll Student
+              <UserPlus size={16} /> Enroll Student
             </Link>
           </div>
         </div>
@@ -269,7 +336,18 @@ const ClassDetails = () => {
       {/* Student List */}
       <div className="bg-slate-900 rounded-[2.5rem] shadow-2xl border border-slate-800 overflow-hidden">
         <div className="px-8 py-6 border-b border-slate-800 flex items-center justify-between bg-slate-950/50">
-          <h3 className="font-black text-white tracking-tight uppercase text-xs tracking-[0.1em]">Enrolled Students</h3>
+          <div className="flex items-center gap-4">
+            <h3 className="font-black text-white tracking-tight uppercase text-xs tracking-[0.1em]">Enrolled Students</h3>
+            {selectedStudents.size > 0 && (
+              <button 
+                onClick={() => setShowPromotionModal(true)}
+                className="btn-primary py-2 px-4 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2"
+              >
+                <ArrowUp size={12} />
+                Bulk Promote ({selectedStudents.size})
+              </button>
+            )}
+          </div>
           <span className="text-[10px] font-black bg-slate-950 border border-slate-800 text-slate-400 px-3 py-1 rounded-full uppercase tracking-widest">Node ID: {classId.substring(0, 4)}</span>
         </div>
         
@@ -277,6 +355,18 @@ const ClassDetails = () => {
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="border-b border-slate-800">
+                <th className="px-8 py-5">
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); toggleSelectAll(); }}
+                    className="p-1 hover:text-primary-400 transition-colors"
+                  >
+                    {selectedStudents.size === filteredStudents.length ? (
+                      <CheckSquare size={16} className="text-primary-400" />
+                    ) : (
+                      <Square size={16} className="text-slate-500" />
+                    )}
+                  </button>
+                </th>
                 <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Student Name</th>
                 <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Guardian Contact</th>
                 <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Operations</th>
@@ -285,64 +375,160 @@ const ClassDetails = () => {
             <tbody className="divide-y divide-slate-800">
               {filteredStudents.length === 0 ? (
                 <tr>
-                  <td colSpan="3" className="px-6 lg:px-8 py-20 text-center">
+                  <td colSpan="4" className="px-6 lg:px-8 py-20 text-center">
                     <p className="text-slate-500 font-black uppercase tracking-widest text-[10px]">No students matching the criteria found.</p>
                   </td>
                 </tr>
               ) : (
-                filteredStudents.map((student) => (
-                  <tr key={student.id} className="hover:bg-slate-800/50 transition-colors group cursor-pointer" onClick={() => { setSelectedStudent(student); setShowDetails(true); }}>
-                    <td className="px-6 lg:px-8 py-4 lg:py-5">
-                      <div className="flex items-center gap-3 lg:gap-4">
-                        <div className={`w-9 h-9 lg:w-10 lg:h-10 rounded-lg lg:rounded-xl flex items-center justify-center font-black text-[10px] lg:text-xs shrink-0 border transition-all ${
-                          student.leadership_role 
-                            ? 'bg-aurora-amber/20 text-aurora-amber border-aurora-amber/20 shadow-neon-amber' 
-                            : 'bg-primary-600/10 text-primary-400 border-primary-500/10 shadow-glow'
-                        }`}>
-                          {student.leadership_role ? <Star size={14} lg:size={16} /> : student.full_name.substring(0, 1).toUpperCase()}
-                        </div>
-                        <div className="flex flex-col min-w-0 flex-1">
-                          <span className="font-black text-slate-100 tracking-tight truncate text-sm lg:text-base group-hover:text-primary-400 transition-colors">
-                            {student.full_name}
-                          </span>
-                          {student.leadership_role && (
-                            <span className="text-[8px] lg:text-[9px] font-black text-aurora-amber uppercase tracking-widest flex items-center gap-1">
-                              <ShieldCheck size={10} /> {LEADERSHIP_ROLES.find(r => r.value === student.leadership_role)?.label}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-6 lg:px-8 py-4 lg:py-5 hidden sm:table-cell">
-                      <a 
-                        href={`tel:${student.parent_phone}`}
-                        className="flex items-center gap-2 text-slate-400 font-black text-sm uppercase hover:text-primary-400 transition-colors"
-                      >
-                        <Phone size={14} className="text-primary-500" /> {student.parent_phone}
-                      </a>
-                    </td>
-                    <td className="px-6 lg:px-8 py-4 lg:py-5 text-right">
-                      <div className="flex items-center justify-end gap-1 lg:gap-2">
-                        <Link 
-                          to={`/export?format=pdf&studentId=${student.id}`}
-                          onClick={(e) => e.stopPropagation()}
-                          className="p-2 text-slate-500 hover:text-aurora-cyan transition-colors"
-                          title="Generate Report Card"
+                filteredStudents.map((student) => {
+                  const status = STUDENT_STATUSES.find(s => s.value === (student.status || 'active'));
+                  const isSuspended = student.status === 'suspended';
+                  const isSelected = selectedStudents.has(student.id);
+                  return (
+                    <tr 
+                      key={student.id} 
+                      className={`hover:bg-slate-800/50 transition-colors group cursor-pointer ${isSuspended ? 'opacity-50 grayscale' : ''}`}
+                    >
+                      <td className="px-6 lg:px-8 py-4 lg:py-5">
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); toggleStudentSelect(student.id); }}
+                          className="p-1 hover:text-primary-400 transition-colors"
                         >
-                          <FileSpreadsheet size={16} lg:size={18} />
-                        </Link>
-                        <button className="p-2 text-slate-500 hover:text-primary-400 transition-colors">
-                          <ArrowRight size={16} lg:size={18} />
+                          {isSelected ? (
+                            <CheckSquare size={16} className="text-primary-400" />
+                          ) : (
+                            <Square size={16} className="text-slate-500" />
+                          )}
                         </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                      </td>
+                      <td className="px-6 lg:px-8 py-4 lg:py-5" onClick={() => { setSelectedStudent(student); setShowDetails(true); }}>
+                        <div className="flex items-center gap-3 lg:gap-4">
+                          <div className={`w-9 h-9 lg:w-10 lg:h-10 rounded-lg lg:rounded-xl flex items-center justify-center font-black text-[10px] lg:text-xs shrink-0 border transition-all ${
+                            student.leadership_role 
+                              ? 'bg-aurora-amber/20 text-aurora-amber border-aurora-amber/20 shadow-neon-amber' 
+                              : 'bg-primary-600/10 text-primary-400 border-primary-500/10 shadow-glow'
+                          }`}>
+                            {student.leadership_role ? <Star size={14} /> : student.full_name.substring(0, 1).toUpperCase()}
+                          </div>
+                          <div className="flex flex-col min-w-0 flex-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-black text-slate-100 tracking-tight truncate text-sm lg:text-base group-hover:text-primary-400 transition-colors">
+                                {student.full_name}
+                              </span>
+                              {status && status.value !== 'active' && (
+                                <span className={`text-[7px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider border border-${status.color}-500/20 bg-${status.color}-500/10 text-${status.color}-400`}>
+                                  {status.label}
+                                </span>
+                              )}
+                            </div>
+                            {student.leadership_role && (
+                              <span className="text-[8px] lg:text-[9px] font-black text-aurora-amber uppercase tracking-widest flex items-center gap-1 mt-1">
+                                <ShieldCheck size={10} /> {LEADERSHIP_ROLES.find(r => r.value === student.leadership_role)?.label}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-6 lg:px-8 py-4 lg:py-5 hidden sm:table-cell">
+                        <a 
+                          href={`tel:${student.parent_phone}`}
+                          className="flex items-center gap-2 text-slate-400 font-black text-sm uppercase hover:text-primary-400 transition-colors"
+                        >
+                          <Phone size={14} className="text-primary-500" /> {student.parent_phone}
+                        </a>
+                      </td>
+                      <td className="px-6 lg:px-8 py-4 lg:py-5 text-right">
+                        <div className="flex items-center justify-end gap-1 lg:gap-2">
+                          <Link 
+                            to={`/export?format=pdf&studentId=${student.id}`}
+                            onClick={(e) => e.stopPropagation()}
+                            className="p-2 text-slate-500 hover:text-aurora-cyan transition-colors"
+                            title="Generate Report Card"
+                          >
+                            <FileSpreadsheet size={16} />
+                          </Link>
+                          <button className="p-2 text-slate-500 hover:text-primary-400 transition-colors">
+                            <ArrowRight size={16} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
         </div>
       </div>
+
+      {showPromotionModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-slate-900 rounded-3xl p-6 border border-slate-800 shadow-2xl max-w-md w-full animate-in fade-in zoom-in duration-200">
+            <div className="flex items-center gap-4 mb-6">
+              <div className="w-12 h-12 bg-aurora-cyan/10 rounded-2xl flex items-center justify-center text-aurora-cyan border border-aurora-cyan/20">
+                <ArrowUp size={24} />
+              </div>
+              <div>
+                <h3 className="text-xl font-black text-white tracking-tight">Bulk Promote Students</h3>
+                <p className="text-slate-400 text-sm font-medium">
+                  Move {selectedStudents.size} student{selectedStudents.size !== 1 ? 's' : ''} to another class
+                </p>
+              </div>
+            </div>
+            
+            <div className="space-y-4 mb-6">
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                  Select Target Class
+                </label>
+                <div className="relative flex items-center bg-slate-950 px-4 py-3 rounded-2xl border border-slate-800">
+                  <select
+                    className="w-full bg-transparent border-none text-sm font-bold text-slate-200 focus:ring-0 cursor-pointer outline-none"
+                    value={targetClassId}
+                    onChange={(e) => setTargetClassId(e.target.value)}
+                  >
+                    <option value="">Choose a class...</option>
+                    {allClasses.filter(c => c.id !== classId).map((cls) => (
+                      <option key={cls.id} value={cls.id} className="bg-slate-900 text-white">
+                        {cls.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              
+              <div className="bg-slate-950/50 p-4 rounded-2xl border border-slate-800">
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">
+                  Students to Promote:
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {filteredStudents.filter(s => selectedStudents.has(s.id)).map(student => (
+                    <span key={student.id} className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-primary-500/10 text-primary-400 text-[9px] font-bold uppercase tracking-wider border border-primary-500/20">
+                      {student.full_name}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setShowPromotionModal(false)}
+                className="flex-1 px-4 py-3 rounded-2xl bg-slate-800 text-slate-300 text-xs font-black uppercase tracking-widest hover:bg-slate-700 transition-all"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleBulkPromote}
+                disabled={!targetClassId || promoting}
+                className="flex-1 px-4 py-3 rounded-2xl bg-aurora-cyan/20 text-aurora-cyan text-xs font-black uppercase tracking-widest hover:bg-aurora-cyan/30 border border-aurora-cyan/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {promoting ? <Loader2 size={14} className="animate-spin" /> : 'Promote Now'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <StudentDetailsModal 
         student={selectedStudent} 

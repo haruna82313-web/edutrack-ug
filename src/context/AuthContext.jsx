@@ -12,7 +12,7 @@ export const AuthProvider = ({ children }) => {
     try {
       const { data, error } = await supabase
         .from('users')
-        .select('*, schools(name, subscription_status)')
+        .select('*, schools(name, subscription_status, type)')
         .eq('id', userId)
         .maybeSingle();
       

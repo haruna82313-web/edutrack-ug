@@ -299,7 +299,7 @@ const ParentDashboard = () => {
       setLoading(true);
       const { data, error } = await supabase
         .from('students')
-        .select('*, classes(name)')
+        .select('*, classes(name), schools(name, type)')
         .eq('parent_phone', profile.phone_number);
 
       if (error) throw error;
@@ -452,9 +452,18 @@ const ParentDashboard = () => {
                     </div>
                     <div className="flex flex-col items-start">
                       <span className="text-[10px] font-black uppercase tracking-widest leading-none">{s.full_name.split(' ')[0]}</span>
-                      <span className={`text-[7px] font-black uppercase tracking-tighter mt-1 ${
-                        selectedStudent?.id === s.id ? 'text-white/60' : 'text-slate-600'
-                      }`}>{s.classes?.name}</span>
+                      <div className="flex flex-col items-start gap-0.5 mt-1">
+                        <span className={`text-[7px] font-black uppercase tracking-tighter ${
+                          selectedStudent?.id === s.id ? 'text-white/60' : 'text-slate-600'
+                        }`}>{s.classes?.name}</span>
+                        {s.schools?.type && (
+                          <span className={`text-[6px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full ${
+                            s.schools.type === 'primary' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-violet-500/20 text-violet-400'
+                          }`}>
+                            {s.schools.type} • {s.schools?.name?.split(' ')[0]}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </button>
                 ))}

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
-import { UserPlus, Loader2, Users, Phone, GraduationCap, MapPin, Search } from 'lucide-react';
+import { UserPlus, Loader2, Users, Phone, GraduationCap, Search, Archive, CheckCircle } from 'lucide-react';
 import EditModal from '../../components/admin/EditModal';
 import RowActions from '../../components/admin/RowActions';
 import { deleteStudentCascade } from '../../lib/adminCrud';
@@ -10,6 +10,19 @@ import { ShieldCheck, Star } from 'lucide-react';
 import StudentDetailsModal from '../../components/admin/StudentDetailsModal';
 
 import { useNotification } from '../../context/NotificationContext';
+
+const STUDENT_STATUSES = [
+  { value: 'active', label: 'Active', color: 'emerald' },
+  { value: 'inactive', label: 'Inactive', color: 'slate' },
+  { value: 'graduated', label: 'Graduated', color: 'blue' },
+  { value: 'transferred', label: 'Transferred', color: 'amber' },
+  { value: 'suspended', label: 'Suspended', color: 'red' }
+];
+
+const STATUS_OPTIONS = [
+  { value: 'all', label: 'All Students' },
+  ...STUDENT_STATUSES.map(s => ({ value: s.value, label: s.label }))
+];
 
 const LEADERSHIP_ROLES = [
   { value: 'class_rep', label: 'Class Representative' },
@@ -32,6 +45,10 @@ const Students = () => {
   const [filterDate, setFilterDate] = useState('');
   const [filterRole, setFilterRole] = useState('all'); // all, leaders, non_leaders, or specific role value
   const [filterGender, setFilterGender] = useState('all');
+  const [filterStatus, setFilterStatus] = useState('active');
+  const [archiving, setArchiving] = useState(null);
+  const [archiveReason, setArchiveReason] = useState('');
+  const [archiveStatus, setArchiveStatus] = useState('inactive');
   
   const [formData, setFormData] = useState({
     fullName: '',
@@ -99,9 +116,55 @@ const Students = () => {
           : student.leadership_role === filterRole;
 
     const matchesGender = filterGender === 'all' || student.gender === filterGender;
+    const matchesStatus = filterStatus === 'all' || (student.status || 'active') === filterStatus;
     
-    return matchesSearch && matchesDate && matchesRole && matchesGender;
+    return matchesSearch && matchesDate && matchesRole && matchesGender && matchesStatus;
   });
+
+  const archiveStudent = async () => {
+    if (!archiving) return;
+    setSaving(true);
+    try {
+      const { error } = await supabase
+        .from('students')
+        .update({
+          status: archiveStatus,
+          archived_at: new Date().toISOString(),
+          archive_reason: archiveReason || null
+        })
+        .eq('id', archiving.id);
+      if (error) throw error;
+      setArchiving(null);
+      setArchiveReason('');
+      fetchData();
+      showNotification(`Student ${archiveStatus === 'active' ? 'reactivated' : 'archived'} successfully!`);
+    } catch (error) {
+      showNotification('Archive failed: ' + error.message, 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const reactivateStudent = async (student) => {
+    try {
+      setSaving(true);
+      const { error } = await supabase
+        .from('students')
+        .update({
+          status: 'active',
+          archived_at: null,
+          archive_reason: null
+        })
+        .eq('id', student.id);
+      if (error) throw error;
+      fetchData();
+      showNotification('Student reactivated successfully!');
+    } catch (error) {
+      showNotification('Reactivate failed: ' + error.message, 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const maleCount = filteredStudents.filter(s => s.gender === 'Male').length;
   const femaleCount = filteredStudents.filter(s => s.gender === 'Female').length;
@@ -214,6 +277,20 @@ const Students = () => {
               <option value="all" className="bg-slate-900 text-white">All Genders</option>
               <option value="Male" className="bg-slate-900 text-white">Male</option>
               <option value="Female" className="bg-slate-900 text-white">Female</option>
+            </select>
+          </div>
+          <div className="relative flex items-center bg-slate-900 px-4 py-2 rounded-2xl shadow-xl border border-slate-800">
+            <CheckCircle className="text-slate-500 mr-2" size={16} />
+            <select
+              className="bg-transparent border-none text-[10px] font-black uppercase tracking-widest text-slate-300 focus:ring-0 cursor-pointer outline-none"
+              value={filterStatus}
+              onChange={(e) => setFilterStatus(e.target.value)}
+            >
+              {STATUS_OPTIONS.map(opt => (
+                <option key={opt.value} value={opt.value} className="bg-slate-900 text-white">
+                  {opt.label}
+                </option>
+              ))}
             </select>
           </div>
           <div className="relative flex items-center bg-slate-900 px-4 py-2 rounded-2xl shadow-xl border border-slate-800">
@@ -376,6 +453,14 @@ const Students = () => {
                                   {student.gender === 'Male' ? 'M' : 'F'}
                                 </span>
                               )}
+                              {(() => {
+                                const st = STUDENT_STATUSES.find(s => s.value === (student.status || 'active'));
+                                return st && st.value !== 'active' ? (
+                                  <span className={`text-[7px] font-black px-1.5 py-0.5 rounded-full uppercase tracking-tighter border border-${st.color}-500/20 bg-${st.color}-500/10 text-${st.color}-400`}>
+                                    {st.label}
+                                  </span>
+                                ) : null;
+                              })()}
                             </div>
                             {student.leadership_role && (
                               <span className="text-[9px] font-black text-aurora-amber uppercase tracking-widest flex items-center gap-1">
@@ -399,10 +484,27 @@ const Students = () => {
                         </a>
                       </td>
                       <td className="px-8 py-6 text-right">
-                        <RowActions
-                          onEdit={() => setEditing({ ...student, class_id: student.class_id })}
-                          onDelete={() => deleteStudent(student.id)}
-                        />
+                        {(student.status || 'active') === 'active' ? (
+                          <RowActions
+                            onEdit={() => setEditing({ ...student, class_id: student.class_id })}
+                            onDelete={() => {
+                              setArchiving(student);
+                              setArchiveReason('');
+                              setArchiveStatus('inactive');
+                            }}
+                            customDeleteIcon={Archive}
+                            customDeleteLabel="Archive"
+                          />
+                        ) : (
+                          <div className="flex items-center justify-end gap-3">
+                            <button
+                              onClick={(e) => { e.stopPropagation(); reactivateStudent(student); }}
+                              className="flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-500/10 text-emerald-400 text-[10px] font-black uppercase tracking-widest hover:bg-emerald-500/20 border border-emerald-500/20 transition-all"
+                            >
+                              <CheckCircle size={12} /> Reactivate
+                            </button>
+                          </div>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -431,6 +533,14 @@ const Students = () => {
                               {student.gender === 'Male' ? 'M' : 'F'}
                             </span>
                           )}
+                          {(() => {
+                            const st = STUDENT_STATUSES.find(s => s.value === (student.status || 'active'));
+                            return st && st.value !== 'active' ? (
+                              <span className={`text-[7px] font-black px-1 py-0.5 rounded-full uppercase tracking-tighter border border-${st.color}-500/20 bg-${st.color}-500/10 text-${st.color}-400`}>
+                                {st.label}
+                              </span>
+                            ) : null;
+                          })()}
                         </div>
                         <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
                           <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-slate-950 text-slate-500 text-[8px] font-black uppercase tracking-wider border border-slate-800">
@@ -444,10 +554,25 @@ const Students = () => {
                         </div>
                       </div>
                     </div>
-                    <RowActions
-                      onEdit={() => setEditing({ ...student, class_id: student.class_id })}
-                      onDelete={() => deleteStudent(student.id)}
-                    />
+                    {(student.status || 'active') === 'active' ? (
+                      <RowActions
+                        onEdit={() => setEditing({ ...student, class_id: student.class_id })}
+                        onDelete={() => {
+                          setArchiving(student);
+                          setArchiveReason('');
+                          setArchiveStatus('inactive');
+                        }}
+                        customDeleteIcon={Archive}
+                        customDeleteLabel="Archive"
+                      />
+                    ) : (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); reactivateStudent(student); }}
+                        className="flex items-center gap-1.5 px-2.5 py-2 rounded-xl bg-emerald-500/10 text-emerald-400 text-[9px] font-black uppercase tracking-widest hover:bg-emerald-500/20 border border-emerald-500/20 transition-all"
+                      >
+                        <CheckCircle size={10} /> Reactivate
+                      </button>
+                    )}
                   </div>
                   
                   <div className="flex items-center justify-between pt-3 border-t border-slate-800/50">
@@ -535,6 +660,78 @@ const Students = () => {
           </p>
         )}
       </EditModal>
+
+      {/* Archive Modal */}
+      {archiving && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-slate-900 rounded-3xl p-6 border border-slate-800 shadow-2xl max-w-md w-full animate-in fade-in zoom-in duration-200">
+            <div className="flex items-center gap-4 mb-6">
+              <div className="w-12 h-12 bg-red-500/10 rounded-2xl flex items-center justify-center text-red-400 border border-red-500/20">
+                <Archive size={24} />
+              </div>
+              <div>
+                <h3 className="text-xl font-black text-white tracking-tight">Archive student</h3>
+                <p className="text-slate-400 text-sm font-medium">
+                  You're archiving <span className="text-white font-bold">{archiving.full_name}</span>
+                </p>
+              </div>
+            </div>
+            
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                  Status change
+                </label>
+                <div className="relative flex items-center bg-slate-950 px-4 py-3 rounded-2xl border border-slate-800">
+                  <select
+                    className="w-full bg-transparent border-none text-sm font-bold text-slate-200 focus:ring-0 cursor-pointer outline-none"
+                    value={archiveStatus}
+                    onChange={(e) => setArchiveStatus(e.target.value)}
+                  >
+                    {STUDENT_STATUSES.filter(s => s.value !== 'active').map((status) => (
+                      <option key={status.value} value={status.value} className="bg-slate-900 text-white">
+                        {status.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                  Reason (optional)
+                </label>
+                <textarea
+                  className="w-full bg-slate-950 border border-slate-800 rounded-2xl px-4 py-3 text-sm font-medium text-white focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500 resize-none min-h-[100px]"
+                  placeholder="Enter reason for status change..."
+                  value={archiveReason}
+                  onChange={(e) => setArchiveReason(e.target.value)}
+                />
+              </div>
+
+              <p className="text-[10px] text-slate-500 font-medium leading-relaxed">
+                All student records (marks, attendance, etc.) will be preserved, but the student won't appear in active lists.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-3 mt-6">
+              <button
+                onClick={() => setArchiving(null)}
+                className="flex-1 px-4 py-3 rounded-2xl bg-slate-800 text-slate-300 text-xs font-bold uppercase tracking-widest hover:bg-slate-700 transition-all"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={archiveStudent}
+                disabled={saving}
+                className="flex-1 px-4 py-3 rounded-2xl bg-red-500/20 text-red-400 text-xs font-bold uppercase tracking-widest hover:bg-red-500/30 border border-red-500/20 transition-all disabled:opacity-50"
+              >
+                {saving ? <Loader2 size={14} className="animate-spin" /> : 'Archive'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <StudentDetailsModal 
         student={selectedStudent} 

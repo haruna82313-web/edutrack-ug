@@ -6,9 +6,10 @@ import {
   Loader2, FileText, GraduationCap, BookOpen, Star,
   ArrowRight, ArrowLeft, CheckCircle2
 } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
 import { useNotification } from '../../context/NotificationContext';
 import { 
-  calculateOLevelTotal, getOLevelGrade,
+  calculateOLevelTotal, getOLevelGrade, getPrimaryGrade,
   calculateTotalALevelPoints, getALevelPrincipalGradeAndPoints
 } from '../../utils/uneb-engine';
 import { exportToPdf } from '../../lib/exportUtils';
@@ -30,6 +31,7 @@ const ClassReportCards = () => {
   const { classId } = useParams();
   const navigate = useNavigate();
   const { showNotification } = useNotification();
+  const { profile } = useAuth();
 
   // State
   const [classInfo, setClassInfo] = useState(null);
@@ -44,6 +46,28 @@ const ClassReportCards = () => {
   const [schoolInfo, setSchoolInfo] = useState(null);
   const [allMarks, setAllMarks] = useState([]);
   const [studentPositions, setStudentPositions] = useState({});
+
+  const schoolType = profile?.schools?.type || 'secondary';
+  const [gradingConfigs, setGradingConfigs] = useState([]);
+
+  // Fetch Grading Configs for Primary Schools
+  const fetchGradingConfigs = async () => {
+    if (schoolType !== 'primary' || !profile?.school_id) return;
+    try {
+      const { data } = await supabase
+        .from('grading_configs')
+        .select('*')
+        .eq('school_id', profile.school_id)
+        .order('min_score', { ascending: false });
+      setGradingConfigs(data || []);
+    } catch (error) {
+      console.error('Error fetching grading configs:', error);
+    }
+  };
+
+  useEffect(() => {
+    fetchGradingConfigs();
+  }, [schoolType, profile?.school_id]);
 
   // Assessment Type Options (fallback)
   const DEFAULT_ASSESSMENT_TYPES = [
@@ -73,11 +97,12 @@ const ClassReportCards = () => {
       if (clsErr) throw clsErr;
       setClassInfo(cls);
 
-      // 2. Get students
+      // 2. Get active students only
       const { data: stds, error: stdsErr } = await supabase
         .from('students')
         .select('*')
         .eq('class_id', classId)
+        .eq('status', 'active')
         .order('full_name');
       if (stdsErr) throw stdsErr;
       setStudents(stds || []);
@@ -88,7 +113,7 @@ const ClassReportCards = () => {
         const studentIds = stds.map(s => s.id);
         const { data: marksData, error: marksErr } = await supabase
           .from('student_marks')
-          .select('*, subjects(name)')
+          .select('*, subjects(name), classes(name)')
           .in('student_id', studentIds)
           .eq('year', parseInt(selectedYear))
           .eq('term', selectedTerm)
@@ -187,7 +212,7 @@ const ClassReportCards = () => {
   const getStudentMarks = async (studentId) => {
     const { data: marksData, error } = await supabase
       .from('student_marks')
-      .select('*, subjects(name)')
+      .select('*, subjects(name), classes(name)')
       .eq('student_id', studentId)
       .eq('year', parseInt(selectedYear))
       .eq('term', selectedTerm)
@@ -376,22 +401,33 @@ const ClassReportCards = () => {
 
       // ===== MARKS TABLE =====
       // Simplified table headers that match the data we have
-      const tableHeaders = [['SUBJECT', 'SCORE', 'OUT OF', 'GRADE', 'REMARK']];
+      const tableHeaders = isALevel 
+        ? [['SUBJECT', 'SCORE', 'OUT OF', 'GRADE', 'POINTS', 'REMARK']] 
+        : [['SUBJECT', 'SCORE', 'OUT OF', 'GRADE', 'REMARK']];
       const tableRows = (marksData || []).map(m => {
         // Use saved UNEB grade if available, otherwise calculate
         let gradeInfo;
         if (m.grade) {
-          gradeInfo = { grade: m.grade };
+          gradeInfo = { grade: m.grade, points: m.points };
+        } else if (isALevel) {
+          gradeInfo = getALevelPrincipalGradeAndPoints(m.marks, m.max_marks);
         } else {
           gradeInfo = getOLevelGrade(m.marks, m.max_marks);
         }
-        return [
+        
+        const row = [
           m.subjects?.name || 'Unknown',
           m.marks || '-',
           m.max_marks || '-',
-          gradeInfo.grade,
-          m.comments || ''
+          gradeInfo.grade
         ];
+        
+        if (isALevel) {
+          row.push(gradeInfo.points);
+        }
+        
+        row.push(m.comments || '');
+        return row;
       });
 
       autoTable(doc, {
@@ -982,7 +1018,15 @@ He is encouraged to maintain his outstanding performance.`;
                 <BookOpen size={14} className="text-aurora-violet" />
                 <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Academic Performance</h4>
               </div>
-              <MarksTable studentId={selectedStudent.id} year={selectedYear} term={selectedTerm} assessmentType={selectedAssessmentType} />
+              <MarksTable 
+                studentId={selectedStudent.id} 
+                year={selectedYear} 
+                term={selectedTerm} 
+                assessmentType={selectedAssessmentType} 
+                classLevel={classInfo?.level}
+                schoolType={schoolType}
+                gradingConfigs={gradingConfigs}
+              />
             </div>
 
             {/* Attendance Summary */}
@@ -1052,7 +1096,7 @@ He is encouraged to maintain his outstanding performance.`;
 };
 
 // Child component to show marks
-const MarksTable = ({ studentId, year, term, assessmentType }) => {
+const MarksTable = ({ studentId, year, term, assessmentType, classLevel, schoolType, gradingConfigs }) => {
   const [marks, setMarks] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -1061,7 +1105,7 @@ const MarksTable = ({ studentId, year, term, assessmentType }) => {
       try {
         const { data, error } = await supabase
           .from('student_marks')
-          .select(`*, subjects(name)`)
+          .select(`*, subjects(name), classes(name)`)
           .eq('student_id', studentId)
           .eq('year', parseInt(year))
           .eq('term', term)
@@ -1110,17 +1154,33 @@ const MarksTable = ({ studentId, year, term, assessmentType }) => {
             <th className="py-2.5 px-3 text-[9px] font-black text-slate-500 uppercase tracking-widest text-center">Marks</th>
             <th className="py-2.5 px-3 text-[9px] font-black text-slate-500 uppercase tracking-widest text-center">Max</th>
             <th className="py-2.5 px-3 text-[9px] font-black text-slate-500 uppercase tracking-widest text-center">Grade</th>
+            {classLevel === 'A' && (
+              <th className="py-2.5 px-3 text-[9px] font-black text-slate-500 uppercase tracking-widest text-center">Points</th>
+            )}
             <th className="py-2.5 px-3 text-[9px] font-black text-slate-500 uppercase tracking-widest">Comment</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-800">
           {marks.map((m) => {
-            const { grade, description } = getOLevelGrade(m.marks, m.max_marks);
+            let gradeInfo;
+            if (m.grade) {
+              gradeInfo = { grade: m.grade, description: m.description || '', points: m.points };
+            } else if (schoolType === 'primary') {
+              gradeInfo = getPrimaryGrade(m.marks, gradingConfigs, m.max_marks);
+            } else if (classLevel === 'A') {
+              gradeInfo = getALevelPrincipalGradeAndPoints(m.marks, m.max_marks);
+            } else {
+              gradeInfo = getOLevelGrade(m.marks, m.max_marks);
+            }
+            
             const getGradeColor = () => {
-              switch (grade) {
+              switch (gradeInfo.grade) {
                 case 'A': return 'text-aurora-emerald bg-aurora-emerald/10 border border-aurora-emerald/20';
                 case 'B': return 'text-aurora-cyan bg-aurora-cyan/10 border border-aurora-cyan/20';
                 case 'C': return 'text-aurora-amber bg-aurora-amber/10 border border-aurora-amber/20';
+                case 'D': return 'text-orange-400 bg-orange-400/10 border border-orange-400/20';
+                case 'E': return 'text-red-400 bg-red-400/10 border border-red-400/20';
+                case 'O': return 'text-yellow-400 bg-yellow-400/10 border border-yellow-400/20';
                 default: return 'text-aurora-rose bg-aurora-rose/10 border border-aurora-rose/20';
               }
             };
@@ -1131,10 +1191,13 @@ const MarksTable = ({ studentId, year, term, assessmentType }) => {
                 <td className="py-3 px-3 text-center text-slate-500 font-bold">{m.max_marks}</td>
                 <td className="py-3 px-3 text-center">
                   <span className={`inline-block px-2.5 py-1 rounded-full text-[8px] font-black uppercase tracking-widest ${getGradeColor()}`}>
-                    {grade}
+                    {gradeInfo.grade}
                   </span>
                 </td>
-                <td className="py-3 px-3 text-[10px] text-slate-400">{m.comments || description}</td>
+                {classLevel === 'A' && (
+                  <td className="py-3 px-3 text-center font-black text-lg text-aurora-violet">{gradeInfo.points}</td>
+                )}
+                <td className="py-3 px-3 text-[10px] text-slate-400">{m.comments || gradeInfo.description}</td>
               </tr>
             );
           })}
