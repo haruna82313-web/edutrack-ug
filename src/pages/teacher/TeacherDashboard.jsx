@@ -21,7 +21,7 @@ import {
 } from '../../utils/uneb-engine';
 
 const TeacherDashboard = () => {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const { showNotification } = useNotification();
   const isOnline = useOnlineStatus();
   const [activeTab, setActiveTab] = useState('home'); 
@@ -43,6 +43,7 @@ const TeacherDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [subscriptionStatus, setSubscriptionStatus] = useState('Active');
+  const [gradingConfigs, setGradingConfigs] = useState([]);
   
   // Preset comment options
   const COMMENT_PRESETS = [
@@ -324,6 +325,16 @@ By continuing to use the EduTrack Staff Terminal, you acknowledge your responsib
       ]);
       setClasses(classRes.data || []);
       setSubjects(subjectRes.data || []);
+      
+      // If primary school, fetch grading configs
+      if (profile?.schools?.type === 'primary') {
+        const { data: configData } = await supabase
+          .from('grading_configs')
+          .select('*')
+          .eq('school_id', prof.school_id)
+          .order('min_score', { ascending: false });
+        setGradingConfigs(configData || []);
+      }
     } catch (err) {
       console.error(err);
     }
@@ -875,19 +886,45 @@ By continuing to use the EduTrack Staff Terminal, you acknowledge your responsib
                       {ASSESSMENT_TYPES.map(type => <option key={type} value={type}>{type}</option>)}
                     </select>
                   </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Grading Level</label>
-                    <select 
-                      className="input-field appearance-none"
-                      value={selectedLevel}
-                      onChange={(e) => setSelectedLevel(e.target.value)}
-                    >
-                      <option value="o-level">O-Level</option>
-                      <option value="a-level">A-Level</option>
-                    </select>
-                  </div>
+                  {profile?.schools?.type !== 'primary' && (
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Grading Level</label>
+                      <select 
+                        className="input-field appearance-none"
+                        value={selectedLevel}
+                        onChange={(e) => setSelectedLevel(e.target.value)}
+                      >
+                        <option value="o-level">O-Level</option>
+                        <option value="a-level">A-Level</option>
+                      </select>
+                    </div>
+                  )}
                 </div>
               </div>
+
+              {/* Show Grading Config for Primary Schools */}
+              {profile?.schools?.type === 'primary' && gradingConfigs.length > 0 && (
+                <div className="bg-slate-900 p-6 lg:p-8 rounded-3xl border border-slate-800 shadow-xl">
+                  <h3 className="text-xs font-black text-white uppercase tracking-widest mb-4 flex items-center gap-2">
+                    <Target size={16} className="text-emerald-400" />
+                    Grading Scale Reference
+                  </h3>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+                    {gradingConfigs.map((config, idx) => (
+                      <div 
+                        key={idx} 
+                        className="p-4 bg-slate-950 rounded-2xl border border-slate-800 text-center hover:border-emerald-500/30 transition-all"
+                      >
+                        <div className="text-lg font-black text-emerald-400 mb-1">{config.grade_name}</div>
+                        <div className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-2">
+                          {config.min_score} - {config.max_score}
+                        </div>
+                        <div className="text-xs font-bold text-slate-300">{config.description}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {students.length > 0 && (
                 <div className="bg-slate-900 rounded-3xl border border-slate-800 shadow-xl overflow-hidden">

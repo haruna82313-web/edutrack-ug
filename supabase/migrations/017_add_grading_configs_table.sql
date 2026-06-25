@@ -24,14 +24,18 @@ CREATE OR REPLACE FUNCTION public.insert_default_primary_grading()
 RETURNS TRIGGER AS $$
 BEGIN
   IF NEW.type = 'primary' THEN
-    -- Insert default Ugandan primary grading (example)
+    -- Insert default Ugandan primary grading (D1 to F9)
     INSERT INTO public.grading_configs (school_id, grade_name, description, min_score, max_score)
     VALUES
-      (NEW.id, 'A', 'Excellent', 80, 100),
-      (NEW.id, 'B', 'Very Good', 70, 79),
-      (NEW.id, 'C', 'Good', 60, 69),
-      (NEW.id, 'D', 'Fair', 50, 59),
-      (NEW.id, 'E', 'Needs Improvement', 0, 49);
+      (NEW.id, 'D1', 'EXCELLENT', 90, 100),
+      (NEW.id, 'D2', 'VERY GOOD', 80, 89),
+      (NEW.id, 'C3', 'GOOD', 70, 79),
+      (NEW.id, 'C4', 'PROMISING STUDENT', 60, 69),
+      (NEW.id, 'C5', 'NEEDS TO FOCUS', 55, 59),
+      (NEW.id, 'C6', 'FAIR', 50, 54),
+      (NEW.id, 'P7', 'NEEDS REVISION', 45, 49),
+      (NEW.id, 'P8', 'ROOM FOR IMPROVEMENT', 40, 44),
+      (NEW.id, 'F9', 'FAILED', 0, 39);
   END IF;
   RETURN NEW;
 END;
@@ -43,3 +47,13 @@ AFTER INSERT OR UPDATE OF type ON public.schools
 FOR EACH ROW
 WHEN (NEW.type = 'primary')
 EXECUTE FUNCTION public.insert_default_primary_grading();
+
+-- Create RLS policy for grading_configs
+DROP POLICY IF EXISTS edutrack_grading_configs_school ON public.grading_configs;
+CREATE POLICY edutrack_grading_configs_school ON public.grading_configs
+  FOR ALL TO authenticated
+  USING (school_id = public.auth_user_school_id())
+  WITH CHECK (school_id = public.auth_user_school_id());
+
+-- Grant permissions on grading_configs
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.grading_configs TO authenticated;
