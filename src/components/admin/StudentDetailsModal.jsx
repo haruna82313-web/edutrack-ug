@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { 
   X, Phone, GraduationCap, Star, ShieldCheck, 
-  Target, TrendingUp, Calendar, BookOpen, Loader2, MessageSquare, ChevronDown, ChevronUp
+  Target, TrendingUp, Calendar, BookOpen, Loader2, MessageSquare, ChevronDown, ChevronUp, Check, Plus
 } from 'lucide-react';
 
 const TERMS = ['Term 1', 'Term 2', 'Term 3'];
@@ -11,12 +11,62 @@ const StudentDetailsModal = ({ student, onClose, open }) => {
   const [loading, setLoading] = useState(true);
   const [expandedYears, setExpandedYears] = useState({});
   const [academicHistory, setAcademicHistory] = useState({});
+  const [allSubjects, setAllSubjects] = useState([]);
+  const [assignedSubjects, setAssignedSubjects] = useState([]);
+  const [selectedAcademicYear, setSelectedAcademicYear] = useState(new Date().getFullYear().toString());
+  const [subjectsLoading, setSubjectsLoading] = useState(false);
 
   useEffect(() => {
     if (open && student) {
       fetchStudentStats();
+      fetchSubjects();
     }
   }, [open, student]);
+
+  const fetchSubjects = async () => {
+    try {
+      setSubjectsLoading(true);
+      const { data: prof } = await supabase.from('users').select('school_id').eq('id', (await supabase.auth.getUser()).data.user.id).single();
+      const [subjectsRes, assignmentsRes] = await Promise.all([
+        supabase.from('subjects').select('*').eq('school_id', prof.school_id).order('name'),
+        supabase.from('student_subjects').select('*').eq('student_id', student.id).eq('school_id', prof.school_id).eq('academic_year', selectedAcademicYear)
+      ]);
+
+      setAllSubjects(subjectsRes.data || []);
+      setAssignedSubjects(assignmentsRes.data || []);
+    } catch (err) {
+      console.error('Error fetching subjects:', err);
+    } finally {
+      setSubjectsLoading(false);
+    }
+  };
+
+  const toggleSubjectAssignment = async (subjectId) => {
+    try {
+      setSubjectsLoading(true);
+      const { data: prof } = await supabase.from('users').select('school_id').eq('id', (await supabase.auth.getUser()).data.user.id).single();
+      const isAssigned = assignedSubjects.some(s => s.subject_id === subjectId);
+
+      if (isAssigned) {
+        await supabase.from('student_subjects').delete().eq('student_id', student.id).eq('subject_id', subjectId).eq('school_id', prof.school_id).eq('academic_year', selectedAcademicYear);
+        setAssignedSubjects(prev => prev.filter(s => s.subject_id !== subjectId));
+      } else {
+        const { data: newAssignment } = await supabase.from('student_subjects').insert({
+          student_id: student.id,
+          subject_id: subjectId,
+          school_id: prof.school_id,
+          academic_year: selectedAcademicYear
+        }).select();
+        if (newAssignment) {
+          setAssignedSubjects(prev => [...prev, ...newAssignment]);
+        }
+      }
+    } catch (err) {
+      console.error('Error toggling subject assignment:', err);
+    } finally {
+      setSubjectsLoading(false);
+    }
+  };
 
   const fetchStudentStats = async () => {
     try {

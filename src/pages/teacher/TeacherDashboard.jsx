@@ -17,7 +17,9 @@ import {
   getALevelSubsidiaryGradeAndPoints,
   calculateTotalALevelPoints,
   calculateWeightedPaperScore,
-  determineOLevelResultStatus
+  determineOLevelResultStatus,
+  getPrimaryGrade,
+  getPrimaryGradeAggregate
 } from '../../utils/uneb-engine';
 
 const TeacherDashboard = () => {

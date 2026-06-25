@@ -10,7 +10,9 @@ import { useAuth } from '../../context/AuthContext';
 import { useNotification } from '../../context/NotificationContext';
 import { 
   calculateOLevelTotal, getOLevelGrade, getPrimaryGrade,
-  calculateTotalALevelPoints, getALevelPrincipalGradeAndPoints
+  calculateTotalALevelPoints, getALevelPrincipalGradeAndPoints,
+  calculatePrimaryAggregatesAndDivision, getPrimaryGradeAggregate,
+  getALevelSubsidiaryGradeAndPoints
 } from '../../utils/uneb-engine';
 import { exportToPdf } from '../../lib/exportUtils';
 
@@ -32,6 +34,10 @@ const ClassReportCards = () => {
   const navigate = useNavigate();
   const { showNotification } = useNotification();
   const { profile } = useAuth();
+  
+  // Get level from query params
+  const [searchParams] = [new URLSearchParams(window.location.search)];
+  const selectedLevel = searchParams.get('level');
 
   // State
   const [classInfo, setClassInfo] = useState(null);
@@ -286,11 +292,26 @@ const ClassReportCards = () => {
       console.warn('Could not fetch attendance data');
     }
 
-    // Determine if O-Level or A-Level based on class name
-    const isALevel = classInfo?.name?.toLowerCase().includes('a ') || classInfo?.name?.toLowerCase().includes('senior 6');
-    const levelType = isALevel ? 'A\' LEVEL' : 'O\' LEVEL';
-    const accentColor = isALevel ? [25, 52, 124] : [34, 102, 51]; // Blue for A-Level, Green for O-Level
-    const accentColorLight = isALevel ? [220, 230, 245] : [230, 245, 230];
+    // Determine school type and level - prioritize explicit selection
+    let isPrimary = false;
+    let isALevel = false;
+    
+    if (selectedLevel === 'primary') {
+      isPrimary = true;
+    } else if (selectedLevel === 'A') {
+      isALevel = true;
+    } else if (selectedLevel === 'O') {
+      isPrimary = false;
+      isALevel = false;
+    } else {
+      // Fallback to auto-detection
+      isPrimary = schoolType === 'primary';
+      isALevel = !isPrimary && (classInfo?.level === 'A' || classInfo?.name?.toLowerCase().includes('a ') || classInfo?.name?.toLowerCase().includes('senior 6'));
+    }
+    
+    const levelType = isPrimary ? 'PRIMARY' : (isALevel ? 'A\' LEVEL' : 'O\' LEVEL');
+    const accentColor = isPrimary ? [220, 38, 38] : (isALevel ? [25, 52, 124] : [34, 102, 51]); // Red for Primary, Blue for A-Level, Green for O-Level
+    const accentColorLight = isPrimary ? [254, 226, 226] : (isALevel ? [220, 230, 245] : [230, 245, 230]);
 
     try {
 
@@ -401,16 +422,35 @@ const ClassReportCards = () => {
 
       // ===== MARKS TABLE =====
       // Simplified table headers that match the data we have
-      const tableHeaders = isALevel 
-        ? [['SUBJECT', 'SCORE', 'OUT OF', 'GRADE', 'POINTS', 'REMARK']] 
-        : [['SUBJECT', 'SCORE', 'OUT OF', 'GRADE', 'REMARK']];
+      const tableHeaders = isPrimary
+        ? [['SUBJECT', 'SCORE', 'OUT OF', 'GRADE', 'AGGREGATE', 'REMARK']]
+        : (isALevel 
+          ? [['SUBJECT', 'SCORE', 'OUT OF', 'GRADE', 'POINTS', 'REMARK']] 
+          : [['SUBJECT', 'SCORE', 'OUT OF', 'GRADE', 'REMARK']]);
       const tableRows = (marksData || []).map(m => {
-        // Use saved UNEB grade if available, otherwise calculate
+        // Use saved grade if available, otherwise calculate
         let gradeInfo;
+        const subjectName = m.subjects?.name || '';
+        const isSubsidiarySubject = isALevel && (
+          subjectName.toUpperCase().includes('ICT') || 
+          subjectName.toUpperCase().includes('GENERAL PAPER') || 
+          subjectName.toUpperCase().includes('GP') ||
+          subjectName.toUpperCase().includes('GENERAL') ||
+          subjectName.toUpperCase().includes('SUB MATHS') ||
+          subjectName.toUpperCase().includes('SUB-MATHS') ||
+          subjectName.toUpperCase().includes('SUBMATHS')
+        );
+        
         if (m.grade) {
           gradeInfo = { grade: m.grade, points: m.points };
+        } else if (isPrimary) {
+          gradeInfo = getPrimaryGrade(m.marks, gradingConfigs, m.max_marks);
         } else if (isALevel) {
-          gradeInfo = getALevelPrincipalGradeAndPoints(m.marks, m.max_marks);
+          if (isSubsidiarySubject) {
+            gradeInfo = getALevelSubsidiaryGradeAndPoints(m.marks, m.max_marks);
+          } else {
+            gradeInfo = getALevelPrincipalGradeAndPoints(m.marks, m.max_marks);
+          }
         } else {
           gradeInfo = getOLevelGrade(m.marks, m.max_marks);
         }
@@ -422,7 +462,9 @@ const ClassReportCards = () => {
           gradeInfo.grade
         ];
         
-        if (isALevel) {
+        if (isPrimary) {
+          row.push(getPrimaryGradeAggregate(gradeInfo.grade));
+        } else if (isALevel) {
           row.push(gradeInfo.points);
         }
         
@@ -465,18 +507,61 @@ const ClassReportCards = () => {
       const safeMarksData = marksData || [];
       const totalMarks = safeMarksData.reduce((sum, m) => sum + (parseFloat(m.marks) || 0), 0);
       const avgScore = safeMarksData.length > 0 ? (totalMarks / safeMarksData.length).toFixed(2) : '0.00';
-      // Calculate GPA (4.0 scale) based on percentage
-      const gpa = safeMarksData.length > 0 
-        ? ((totalMarks / (safeMarksData.reduce((sum, m) => sum + (parseFloat(m.max_marks) || 100), 0))) * 4).toFixed(2)
-        : '0.00';
       
-      const stats = [
-        { label: 'GRAND TOTAL', value: totalMarks.toFixed(0) },
-        { label: 'AVERAGE SCORE', value: avgScore },
-        { label: 'GRADE POINT AVERAGE (GPA)', value: gpa },
-        { label: 'POSITION IN CLASS', value: studentPositions[student.id] ? getOrdinalSuffix(studentPositions[student.id]) : 'N/A' },
-        { label: 'OUT OF', value: students.length }
-      ];
+      let stats;
+      if (isPrimary) {
+        const { totalAggregates, division } = calculatePrimaryAggregatesAndDivision(safeMarksData, gradingConfigs);
+        stats = [
+          { label: 'GRAND TOTAL', value: totalMarks.toFixed(0) },
+          { label: 'AVERAGE SCORE', value: avgScore },
+          { label: 'TOTAL AGGREGATES', value: totalAggregates },
+          { label: 'DIVISION', value: division },
+          { label: 'POSITION IN CLASS', value: studentPositions[student.id] ? getOrdinalSuffix(studentPositions[student.id]) : 'N/A' },
+          { label: 'OUT OF', value: students.length }
+        ];
+      } else if (isALevel) {
+        // Calculate total A'Level points
+        let totalPoints = 0;
+        safeMarksData.forEach(m => {
+          let gradeInfo;
+          const subjectName = m.subjects?.name || '';
+          const isSubsidiarySubject = isALevel && (
+            subjectName.toUpperCase().includes('ICT') || 
+            subjectName.toUpperCase().includes('GENERAL PAPER') || 
+            subjectName.toUpperCase().includes('GP') ||
+            subjectName.toUpperCase().includes('GENERAL') ||
+            subjectName.toUpperCase().includes('SUB MATHS') ||
+            subjectName.toUpperCase().includes('SUB-MATHS') ||
+            subjectName.toUpperCase().includes('SUBMATHS')
+          );
+          
+          if (m.grade && m.points !== undefined) {
+            gradeInfo = { points: m.points };
+          } else if (isSubsidiarySubject) {
+            gradeInfo = getALevelSubsidiaryGradeAndPoints(m.marks, m.max_marks);
+          } else {
+            gradeInfo = getALevelPrincipalGradeAndPoints(m.marks, m.max_marks);
+          }
+          totalPoints += gradeInfo.points || 0;
+        });
+        
+        stats = [
+          { label: 'GRAND TOTAL', value: totalMarks.toFixed(0) },
+          { label: 'AVERAGE SCORE', value: avgScore },
+          { label: 'TOTAL POINTS', value: totalPoints.toString() },
+          { label: 'MAX POINTS', value: '20' },
+          { label: 'POSITION IN CLASS', value: studentPositions[student.id] ? getOrdinalSuffix(studentPositions[student.id]) : 'N/A' },
+          { label: 'OUT OF', value: students.length }
+        ];
+      } else {
+        // O'Level
+        stats = [
+          { label: 'GRAND TOTAL', value: totalMarks.toFixed(0) },
+          { label: 'AVERAGE SCORE', value: avgScore },
+          { label: 'POSITION IN CLASS', value: studentPositions[student.id] ? getOrdinalSuffix(studentPositions[student.id]) : 'N/A' },
+          { label: 'OUT OF', value: students.length }
+        ];
+      }
 
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(9);
@@ -517,16 +602,26 @@ const ClassReportCards = () => {
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(8);
       doc.setTextColor(0, 0, 0);
-      const gradeKey = [
-        'A: 90 - 100 (Excellent)',
-        'B: 70 - 89 (Good)',
-        'C: 60 - 69 (Satisfactory)',
-        'D: 50 - 59 (Pass)',
-        'E: 0 - 49 (Fail)'
-      ];
+      let gradeKey;
+      if (isPrimary && gradingConfigs.length > 0) {
+        gradeKey = gradingConfigs.map(config => 
+          `${config.grade_name}: ${config.min_score} - ${config.max_score} (${config.description})`
+        );
+      } else {
+        gradeKey = [
+          'A: 90 - 100 (Excellent)',
+          'B: 70 - 89 (Good)',
+          'C: 60 - 69 (Satisfactory)',
+          'D: 50 - 59 (Pass)',
+          'E: 0 - 49 (Fail)'
+        ];
+      }
       
       gradeKey.forEach((grade, idx) => {
-        doc.text(grade, 20 + (idx % 2) * 50, yPos + 8 + Math.floor(idx / 2) * 4);
+        const col = isPrimary ? idx % 3 : idx % 2;
+        const colWidth = isPrimary ? 55 : 50;
+        const row = Math.floor(idx / (isPrimary ? 3 : 2));
+        doc.text(grade, 20 + col * colWidth, yPos + 8 + row * 4);
       });
 
       yPos += 20;
@@ -702,6 +797,22 @@ He is encouraged to maintain his outstanding performance.`;
         .eq('year', parseInt(selectedYear))
         .eq('term', selectedTerm);
       
+      // First, insert into student_reports for permanent storage that parents always have access to
+      try {
+        await supabase.from('student_reports').insert({
+          student_id: student.id,
+          school_id: schoolId,
+          term: selectedTerm,
+          academic_year: selectedYear,
+          is_published: true,
+          published_at: new Date().toISOString(),
+          report_url: reportBodyJson
+        });
+      } catch (err) {
+        console.warn('Could not insert into student_reports (table schema might need updating):', err);
+      }
+      
+      // Also insert into school_documents for backward compatibility
       const { error } = await supabase
         .from('school_documents')
         .insert({
@@ -825,6 +936,29 @@ He is encouraged to maintain his outstanding performance.`;
         
         // Serialize to JSON string
         const reportBodyJson = JSON.stringify(reportCardData);
+        
+        // Auto-publish marks for this student
+        await supabase
+          .from('student_marks')
+          .update({ is_published: true })
+          .eq('student_id', student.id)
+          .eq('year', parseInt(selectedYear))
+          .eq('term', selectedTerm);
+        
+        // Insert into student_reports for permanent storage
+        try {
+          await supabase.from('student_reports').insert({
+            student_id: student.id,
+            school_id: schoolId,
+            term: selectedTerm,
+            academic_year: selectedYear,
+            is_published: true,
+            published_at: new Date().toISOString(),
+            report_url: reportBodyJson
+          });
+        } catch (err) {
+          console.warn(`Could not insert student_report for ${student.full_name}:`, err);
+        }
         
         return {
           school_id: schoolId,
@@ -1026,6 +1160,10 @@ He is encouraged to maintain his outstanding performance.`;
                 classLevel={classInfo?.level}
                 schoolType={schoolType}
                 gradingConfigs={gradingConfigs}
+                selectedLevel={selectedLevel}
+                allMarks={allMarks}
+                studentPositions={studentPositions}
+                students={students}
               />
             </div>
 
@@ -1096,9 +1234,26 @@ He is encouraged to maintain his outstanding performance.`;
 };
 
 // Child component to show marks
-const MarksTable = ({ studentId, year, term, assessmentType, classLevel, schoolType, gradingConfigs }) => {
+const MarksTable = ({ studentId, year, term, assessmentType, classLevel, schoolType, gradingConfigs, selectedLevel, allMarks, studentPositions, students }) => {
   const [marks, setMarks] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  // Determine level logic like in PDF
+  let isPrimary = false;
+  let isALevel = false;
+  
+  if (selectedLevel === 'primary') {
+    isPrimary = true;
+  } else if (selectedLevel === 'A') {
+    isALevel = true;
+  } else if (selectedLevel === 'O') {
+    isPrimary = false;
+    isALevel = false;
+  } else {
+    // Fallback to auto-detection
+    isPrimary = schoolType === 'primary';
+    isALevel = !isPrimary && (classLevel === 'A');
+  }
 
   useEffect(() => {
     const fetchMarks = async () => {
@@ -1154,7 +1309,10 @@ const MarksTable = ({ studentId, year, term, assessmentType, classLevel, schoolT
             <th className="py-2.5 px-3 text-[9px] font-black text-slate-500 uppercase tracking-widest text-center">Marks</th>
             <th className="py-2.5 px-3 text-[9px] font-black text-slate-500 uppercase tracking-widest text-center">Max</th>
             <th className="py-2.5 px-3 text-[9px] font-black text-slate-500 uppercase tracking-widest text-center">Grade</th>
-            {classLevel === 'A' && (
+            {isPrimary && (
+              <th className="py-2.5 px-3 text-[9px] font-black text-slate-500 uppercase tracking-widest text-center">Aggregate</th>
+            )}
+            {isALevel && (
               <th className="py-2.5 px-3 text-[9px] font-black text-slate-500 uppercase tracking-widest text-center">Points</th>
             )}
             <th className="py-2.5 px-3 text-[9px] font-black text-slate-500 uppercase tracking-widest">Comment</th>
@@ -1163,12 +1321,27 @@ const MarksTable = ({ studentId, year, term, assessmentType, classLevel, schoolT
         <tbody className="divide-y divide-slate-800">
           {marks.map((m) => {
             let gradeInfo;
+            const subjectName = m.subjects?.name || '';
+            const isSubsidiarySubject = isALevel && (
+              subjectName.toUpperCase().includes('ICT') || 
+              subjectName.toUpperCase().includes('GENERAL PAPER') || 
+              subjectName.toUpperCase().includes('GP') ||
+              subjectName.toUpperCase().includes('GENERAL') ||
+              subjectName.toUpperCase().includes('SUB MATHS') ||
+              subjectName.toUpperCase().includes('SUB-MATHS') ||
+              subjectName.toUpperCase().includes('SUBMATHS')
+            );
+            
             if (m.grade) {
               gradeInfo = { grade: m.grade, description: m.description || '', points: m.points };
-            } else if (schoolType === 'primary') {
+            } else if (isPrimary) {
               gradeInfo = getPrimaryGrade(m.marks, gradingConfigs, m.max_marks);
-            } else if (classLevel === 'A') {
-              gradeInfo = getALevelPrincipalGradeAndPoints(m.marks, m.max_marks);
+            } else if (isALevel) {
+              if (isSubsidiarySubject) {
+                gradeInfo = getALevelSubsidiaryGradeAndPoints(m.marks, m.max_marks);
+              } else {
+                gradeInfo = getALevelPrincipalGradeAndPoints(m.marks, m.max_marks);
+              }
             } else {
               gradeInfo = getOLevelGrade(m.marks, m.max_marks);
             }
@@ -1194,7 +1367,12 @@ const MarksTable = ({ studentId, year, term, assessmentType, classLevel, schoolT
                     {gradeInfo.grade}
                   </span>
                 </td>
-                {classLevel === 'A' && (
+                {isPrimary && (
+                  <td className="py-3 px-3 text-center font-black text-lg text-rose-400">
+                    {getPrimaryGradeAggregate(gradeInfo.grade)}
+                  </td>
+                )}
+                {isALevel && (
                   <td className="py-3 px-3 text-center font-black text-lg text-aurora-violet">{gradeInfo.points}</td>
                 )}
                 <td className="py-3 px-3 text-[10px] text-slate-400">{m.comments || gradeInfo.description}</td>

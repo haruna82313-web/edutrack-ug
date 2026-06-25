@@ -4,7 +4,7 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { 
   Users, ChevronLeft, Phone, UserPlus, Trash2, X,
-  Loader2, GraduationCap, Calendar, BookOpen, ArrowRight, Star, ShieldCheck, Target, TrendingUp, FileSpreadsheet, FileText, CheckSquare, Square, ArrowUp
+  Loader2, GraduationCap, Calendar, BookOpen, ArrowRight, Star, ShieldCheck, Target, TrendingUp, FileSpreadsheet, FileText, CheckSquare, Square, ArrowUp, BookOpenCheck, Award
 } from 'lucide-react';
 import StudentDetailsModal from '../../components/admin/StudentDetailsModal';
 
@@ -45,6 +45,8 @@ const ClassDetails = () => {
     performance: 0,
     syllabusProgress: 0
   });
+  const [showLevelSelectModal, setShowLevelSelectModal] = useState(false);
+  const { profile } = useAuth();
 
   useEffect(() => {
     fetchClassData(filterDate);
@@ -274,12 +276,12 @@ const ClassDetails = () => {
                 </button>
               )}
             </div>
-            <Link 
-              to={`/classes/${classId}/reports`} 
+            <button 
+              onClick={() => setShowLevelSelectModal(true)}
               className="btn-primary py-3 lg:py-4 px-6 lg:px-8 shadow-glow self-start md:self-auto text-[10px] lg:text-xs font-black uppercase tracking-widest"
             >
               <FileText size={16} /> Report Cards
-            </Link>
+            </button>
             <Link 
               to="/students" 
               className="py-3 lg:py-4 px-6 lg:px-8 bg-white/5 border border-white/10 rounded-2xl text-slate-300 text-[10px] lg:text-xs font-black uppercase tracking-widest hover:bg-white/10 transition-all self-start md:self-auto"
@@ -535,6 +537,78 @@ const ClassDetails = () => {
         open={showDetails} 
         onClose={() => setShowDetails(false)} 
       />
+
+      {/* Level Selection Modal */}
+      {showLevelSelectModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-slate-900 rounded-3xl p-8 border border-slate-800 shadow-2xl max-w-2xl w-full animate-in fade-in zoom-in duration-200">
+            <div className="flex items-center justify-between mb-8">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 bg-aurora-cyan/10 rounded-2xl flex items-center justify-center text-aurora-cyan border border-aurora-cyan/20">
+                  <FileText size={24} />
+                </div>
+                <div>
+                  <h3 className="text-2xl font-black text-white tracking-tight">Generate Report Cards</h3>
+                  <p className="text-slate-400 text-sm font-medium">Select the grading system for {classInfo?.name}</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setShowLevelSelectModal(false)}
+                className="p-2 rounded-xl bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white transition-all"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+              {/* Primary School Option */}
+              {profile?.schools?.type === 'primary' && (
+                <Link
+                  to={`/classes/${classId}/reports?level=primary`}
+                  onClick={() => setShowLevelSelectModal(false)}
+                  className="group bg-slate-800/50 hover:bg-slate-800 p-6 rounded-2xl border border-slate-700 hover:border-rose-500/50 transition-all"
+                >
+                  <div className="w-12 h-12 bg-rose-500/10 rounded-xl flex items-center justify-center text-rose-400 mb-4 group-hover:bg-rose-500/20 transition-all">
+                    <BookOpenCheck size={24} />
+                  </div>
+                  <h4 className="font-black text-white text-lg mb-2">Primary School</h4>
+                  <p className="text-slate-400 text-xs font-medium">Grades, aggregates and divisions system</p>
+                </Link>
+              )}
+
+              {/* O'Level Option */}
+              {(profile?.schools?.type === 'secondary' || !profile?.schools?.type) && (
+                <Link
+                  to={`/classes/${classId}/reports?level=O`}
+                  onClick={() => setShowLevelSelectModal(false)}
+                  className="group bg-slate-800/50 hover:bg-slate-800 p-6 rounded-2xl border border-slate-700 hover:border-emerald-500/50 transition-all"
+                >
+                  <div className="w-12 h-12 bg-emerald-500/10 rounded-xl flex items-center justify-center text-emerald-400 mb-4 group-hover:bg-emerald-500/20 transition-all">
+                    <BookOpenCheck size={24} />
+                  </div>
+                  <h4 className="font-black text-white text-lg mb-2">O'Level</h4>
+                  <p className="text-slate-400 text-xs font-medium">Standard O'Level grading (A, B, C, D, E)</p>
+                </Link>
+              )}
+
+              {/* A'Level Option */}
+              {(profile?.schools?.type === 'secondary' || !profile?.schools?.type) && (
+                <Link
+                  to={`/classes/${classId}/reports?level=A`}
+                  onClick={() => setShowLevelSelectModal(false)}
+                  className="group bg-slate-800/50 hover:bg-slate-800 p-6 rounded-2xl border border-slate-700 hover:border-blue-500/50 transition-all"
+                >
+                  <div className="w-12 h-12 bg-blue-500/10 rounded-xl flex items-center justify-center text-blue-400 mb-4 group-hover:bg-blue-500/20 transition-all">
+                    <Award size={24} />
+                  </div>
+                  <h4 className="font-black text-white text-lg mb-2">A'Level</h4>
+                  <p className="text-slate-400 text-xs font-medium">A'Level points system (max 20 points)</p>
+                </Link>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

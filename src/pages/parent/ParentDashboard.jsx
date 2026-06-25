@@ -228,18 +228,50 @@ const ParentDashboard = () => {
       // First get my kids
       const myKidsIds = students.map(s => s.id);
       
-      // Get all circulars
-      const { data, error } = await supabase
+      // Get all circulars from school_documents
+      const { data: schoolDocs, error: schoolDocsError } = await supabase
         .from('school_documents')
         .select('*')
         .eq('school_id', profile.school_id)
         .order('updated_at', { ascending: false })
         .limit(20);
 
-      if (error) throw error;
+      if (schoolDocsError) throw schoolDocsError;
       
-      // Filter report cards to only my kids
-      const filteredCirculars = data?.filter(doc => {
+      // Get student reports (permanent storage)
+      let studentReports = [];
+      try {
+        const { data: reportsData, error: reportsError } = await supabase
+          .from('student_reports')
+          .select('*')
+          .in('student_id', myKidsIds)
+          .order('created_at', { ascending: false })
+          .limit(20);
+          
+        if (!reportsError && reportsData) {
+          studentReports = reportsData.map(report => {
+            // Find student name
+            const student = students.find(s => s.id === report.student_id);
+            const studentName = student?.full_name || 'Student';
+            return {
+              id: report.id,
+              title: `Report Card: ${studentName}`,
+              body: report.report_url,
+              doc_type: 'report',
+              student_id: report.student_id,
+              term: report.term,
+              year: report.academic_year,
+              created_at: report.created_at,
+              updated_at: report.published_at || report.created_at
+            };
+          });
+        }
+      } catch (reportsError) {
+        console.warn('Could not fetch student reports, using school documents only', reportsError);
+      }
+      
+      // Filter school documents to my kids
+      const filteredSchoolDocs = schoolDocs?.filter(doc => {
         const isReportCard = doc.title?.startsWith('Report Card:');
         if (!isReportCard) return true; // Show all non-report-card circulars
         
@@ -253,7 +285,21 @@ const ParentDashboard = () => {
         return students.some(s => s.full_name === studentNameInTitle);
       }) || [];
 
-      setCirculars(filteredCirculars);
+      // Combine, deduplicate, and sort by date
+      const allCirculars = [...studentReports, ...filteredSchoolDocs].sort((a, b) => 
+        new Date(b.updated_at || b.created_at) - new Date(a.updated_at || a.created_at)
+      );
+      
+      // Deduplicate by title and date to avoid duplicates
+      const seen = new Set();
+      const uniqueCirculars = allCirculars.filter(doc => {
+        const key = `${doc.title}-${doc.created_at || ''}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+
+      setCirculars(uniqueCirculars);
     } catch (error) {
       console.error('Error fetching circulars:', error.message);
     }

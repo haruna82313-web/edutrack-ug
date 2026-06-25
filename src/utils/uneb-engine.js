@@ -188,3 +188,59 @@ export const getPrimaryGrade = (score, gradingConfigs, maxMarks) => {
     description: 'No Grade' 
   };
 };
+
+/**
+ * Get aggregate value for a primary grade (D1=1, D2=2, C3=3, ..., F9=9)
+ * @param {string} grade - Grade name like 'D1', 'C4', etc.
+ * @returns {number} Aggregate value
+ */
+export const getPrimaryGradeAggregate = (grade) => {
+  if (!grade) return 0;
+  
+  const gradeMatch = grade.match(/([A-Z])(\d)/);
+  if (!gradeMatch) return 0;
+  
+  const letter = gradeMatch[1];
+  const num = parseInt(gradeMatch[2]);
+  
+  if (letter === 'D') return num; // D1=1, D2=2
+  if (letter === 'C') return 2 + num; // C3=3, C4=4, C5=5, C6=6
+  if (letter === 'P') return 6 + num; // P7=7, P8=8
+  if (letter === 'F') return 9; // F9=9
+  
+  return 0;
+};
+
+/**
+ * Calculate total aggregates from array of marks
+ * @param {Array} marksData - Array of marks with grade property
+ * @param {Array} gradingConfigs - Primary grading configs
+ * @returns {Object} { totalAggregates: number, division: string }
+ */
+export const calculatePrimaryAggregatesAndDivision = (marksData, gradingConfigs) => {
+  let totalAggregates = 0;
+  let validGradesCount = 0;
+  
+  (marksData || []).forEach(m => {
+    const gradeInfo = getPrimaryGrade(m.marks, gradingConfigs, m.max_marks);
+    if (gradeInfo.grade && gradeInfo.grade !== 'N/A') {
+      totalAggregates += getPrimaryGradeAggregate(gradeInfo.grade);
+      validGradesCount++;
+    }
+  });
+  
+  let division = 'N/A';
+  if (validGradesCount > 0) {
+    if (totalAggregates >= 4 && totalAggregates <= 12) {
+      division = 'DIVISION 1';
+    } else if (totalAggregates >= 13 && totalAggregates <= 24) {
+      division = 'DIVISION 2';
+    } else if (totalAggregates >= 25 && totalAggregates <= 32) {
+      division = 'DIVISION 3';
+    } else if (totalAggregates >= 33 && totalAggregates <= 36) {
+      division = 'DIVISION 4';
+    }
+  }
+  
+  return { totalAggregates, division };
+};
