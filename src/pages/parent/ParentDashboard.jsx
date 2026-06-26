@@ -100,6 +100,16 @@ const ParentDashboard = () => {
 
   const fetchDetailedMarks = async (studentId, date) => {
     try {
+      // First get student's enrolled subjects
+      const currentYear = new Date().getFullYear().toString();
+      const { data: enrolledSubjects } = await supabase
+        .from('student_subjects')
+        .select('subject_id')
+        .eq('student_id', studentId)
+        .eq('academic_year', currentYear);
+      
+      const enrolledSubjectIds = new Set(enrolledSubjects?.map(e => e.subject_id) || []);
+      
       let query = supabase
         .from('student_marks')
         .select('*, subjects(name), users!student_marks_teacher_id_fkey(full_name)')
@@ -115,7 +125,14 @@ const ParentDashboard = () => {
 
       const { data, error } = await query;
       if (error) throw error;
-      setDetailedMarks(data || []);
+      
+      // Filter marks to only show enrolled subjects (if there are any assignments)
+      let filteredMarks = data || [];
+      if (enrolledSubjectIds.size > 0) {
+        filteredMarks = filteredMarks.filter(m => enrolledSubjectIds.has(m.subject_id));
+      }
+      
+      setDetailedMarks(filteredMarks);
     } catch (error) {
       console.error('Error fetching detailed marks:', error.message);
     }
@@ -317,6 +334,16 @@ const ParentDashboard = () => {
       // Clear old data first to avoid flickering with previous child's data
       setPerformanceData([]);
       
+      // First get student's enrolled subjects
+      const currentYear = new Date().getFullYear().toString();
+      const { data: enrolledSubjects } = await supabase
+        .from('student_subjects')
+        .select('subject_id')
+        .eq('student_id', studentId)
+        .eq('academic_year', currentYear);
+      
+      const enrolledSubjectIds = new Set(enrolledSubjects?.map(e => e.subject_id) || []);
+      
       const { data, error } = await supabase
         .from('student_marks')
         .select('*, subjects(name)')
@@ -327,7 +354,13 @@ const ParentDashboard = () => {
 
       if (error) throw error;
       
-      const formatted = (data || []).map(m => ({
+      // Filter marks to only show enrolled subjects (if there are any assignments)
+      let filteredMarks = data || [];
+      if (enrolledSubjectIds.size > 0) {
+        filteredMarks = filteredMarks.filter(m => enrolledSubjectIds.has(m.subject_id));
+      }
+      
+      const formatted = filteredMarks.map(m => ({
         label: m.subjects?.name?.substring(0, 3).toUpperCase() || 'TST',
         value: (m.marks / m.max_marks) * 100,
         fullDate: new Date(m.created_at).toLocaleDateString(),

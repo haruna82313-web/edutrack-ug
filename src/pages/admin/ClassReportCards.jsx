@@ -623,20 +623,30 @@ const ClassReportCards = () => {
         gradeKey = gradingConfigs.map(config => 
           `${config.grade_name}: ${config.min_score} - ${config.max_score} (${config.description})`
         );
+      } else if (isALevel) {
+        gradeKey = [
+          'A: 6 points',
+          'B: 5 points',
+          'C: 4 points',
+          'D: 3 points',
+          'E: 2 points',
+          'O: 1 point',
+          'F: 0 points'
+        ];
       } else {
         gradeKey = [
-          'A: 90 - 100 (Excellent)',
-          'B: 70 - 89 (Good)',
-          'C: 60 - 69 (Satisfactory)',
-          'D: 50 - 59 (Pass)',
-          'E: 0 - 49 (Fail)'
+          'A: 80 - 100',
+          'B: 70 - 79',
+          'C: 50 - 69',
+          'D: 40 - 49',
+          'E: 0 - 39'
         ];
       }
       
       gradeKey.forEach((grade, idx) => {
-        const col = isPrimary ? idx % 3 : idx % 2;
-        const colWidth = isPrimary ? 55 : 50;
-        const row = Math.floor(idx / (isPrimary ? 3 : 2));
+        const col = idx % 3;
+        const colWidth = 55;
+        const row = Math.floor(idx / 3);
         doc.text(grade, 20 + col * colWidth, yPos + 8 + row * 4);
       });
 
@@ -781,6 +791,57 @@ ${pronoun} is encouraged to maintain ${pronounObjective.toLowerCase()} outstandi
       // Fetch marks for snapshot
       const marksData = await getStudentMarks(student.id);
       
+      // Determine level type
+      let isPrimary = false;
+      let isALevel = false;
+      
+      if (selectedLevel === 'primary') {
+        isPrimary = true;
+      } else if (selectedLevel === 'A') {
+        isALevel = true;
+      } else if (selectedLevel === 'O') {
+        isPrimary = false;
+        isALevel = false;
+      } else {
+        isPrimary = schoolType === 'primary';
+        isALevel = !isPrimary && (classInfo?.level === 'A' || classInfo?.name?.toLowerCase().includes('a ') || classInfo?.name?.toLowerCase().includes('senior 6'));
+      }
+      
+      // Pre-calculate grades for each mark
+      const marksWithGrades = (marksData || []).map(m => {
+        let gradeInfo;
+        const subjectName = m.subjects?.name || '';
+        const isSubsidiarySubject = isALevel && (
+          subjectName.toUpperCase().includes('ICT') || 
+          subjectName.toUpperCase().includes('GENERAL PAPER') || 
+          subjectName.toUpperCase().includes('GP') ||
+          subjectName.toUpperCase().includes('GENERAL') ||
+          subjectName.toUpperCase().includes('SUB MATHS') ||
+          subjectName.toUpperCase().includes('SUB-MATHS') ||
+          subjectName.toUpperCase().includes('SUBMATHS')
+        );
+        
+        if (m.grade) {
+          gradeInfo = { grade: m.grade, points: m.points };
+        } else if (isPrimary) {
+          gradeInfo = getPrimaryGrade(m.marks, gradingConfigs, m.max_marks);
+        } else if (isALevel) {
+          if (isSubsidiarySubject) {
+            gradeInfo = getALevelSubsidiaryGradeAndPoints(m.marks, m.max_marks);
+          } else {
+            gradeInfo = getALevelPrincipalGradeAndPoints(m.marks, m.max_marks);
+          }
+        } else {
+          gradeInfo = getOLevelGrade(m.marks, m.max_marks);
+        }
+        
+        return {
+          ...m,
+          grade: gradeInfo.grade,
+          points: gradeInfo.points
+        };
+      });
+      
       // Fetch attendance summary
       let attendanceData = { present: 0, absent: 0, rate: 0 };
       try {
@@ -801,21 +862,24 @@ ${pronoun} is encouraged to maintain ${pronounObjective.toLowerCase()} outstandi
         console.warn('Could not fetch attendance data');
       }
       
-      // Create snapshot data
+      // Create snapshot data with level info and pre-calculated grades
       const reportCardData = {
         school: schoolInfo,
         student: {
-          id: student.id,
-          full_name: student.full_name,
+          ...student,
+          schools: schoolInfo,
           class_name: classInfo?.name
         },
         term: selectedTerm,
         year: parseInt(selectedYear),
-        marks: marksData || [],
+        marks: marksWithGrades,
         attendance: attendanceData,
         position: studentPositions[student.id] || null,
         total_students: students.length,
-        generated_at: new Date().toISOString()
+        generated_at: new Date().toISOString(),
+        is_primary: isPrimary,
+        is_a_level: isALevel,
+        grading_configs: isPrimary ? gradingConfigs : null
       };
       
       // Serialize snapshot to JSON string for body field
@@ -929,6 +993,57 @@ ${pronoun} is encouraged to maintain ${pronounObjective.toLowerCase()} outstandi
         // Fetch marks for this student
         const marksData = await getStudentMarks(student.id);
         
+        // Determine level type
+        let isPrimary = false;
+        let isALevel = false;
+        
+        if (selectedLevel === 'primary') {
+          isPrimary = true;
+        } else if (selectedLevel === 'A') {
+          isALevel = true;
+        } else if (selectedLevel === 'O') {
+          isPrimary = false;
+          isALevel = false;
+        } else {
+          isPrimary = schoolType === 'primary';
+          isALevel = !isPrimary && (classInfo?.level === 'A' || classInfo?.name?.toLowerCase().includes('a ') || classInfo?.name?.toLowerCase().includes('senior 6'));
+        }
+        
+        // Pre-calculate grades for each mark
+        const marksWithGrades = (marksData || []).map(m => {
+          let gradeInfo;
+          const subjectName = m.subjects?.name || '';
+          const isSubsidiarySubject = isALevel && (
+            subjectName.toUpperCase().includes('ICT') || 
+            subjectName.toUpperCase().includes('GENERAL PAPER') || 
+            subjectName.toUpperCase().includes('GP') ||
+            subjectName.toUpperCase().includes('GENERAL') ||
+            subjectName.toUpperCase().includes('SUB MATHS') ||
+            subjectName.toUpperCase().includes('SUB-MATHS') ||
+            subjectName.toUpperCase().includes('SUBMATHS')
+          );
+          
+          if (m.grade) {
+            gradeInfo = { grade: m.grade, points: m.points };
+          } else if (isPrimary) {
+            gradeInfo = getPrimaryGrade(m.marks, gradingConfigs, m.max_marks);
+          } else if (isALevel) {
+            if (isSubsidiarySubject) {
+              gradeInfo = getALevelSubsidiaryGradeAndPoints(m.marks, m.max_marks);
+            } else {
+              gradeInfo = getALevelPrincipalGradeAndPoints(m.marks, m.max_marks);
+            }
+          } else {
+            gradeInfo = getOLevelGrade(m.marks, m.max_marks);
+          }
+          
+          return {
+            ...m,
+            grade: gradeInfo.grade,
+            points: gradeInfo.points
+          };
+        });
+        
         // Fetch attendance summary
         let attendanceData = { present: 0, absent: 0, rate: 0 };
         try {
@@ -949,21 +1064,24 @@ ${pronoun} is encouraged to maintain ${pronounObjective.toLowerCase()} outstandi
           console.warn(`Could not fetch attendance for ${student.full_name}`);
         }
         
-        // Create snapshot data
+        // Create snapshot data with level info and pre-calculated grades
         const reportCardData = {
           school: schoolInfo,
           student: {
-            id: student.id,
-            full_name: student.full_name,
+            ...student,
+            schools: schoolInfo,
             class_name: classInfo?.name
           },
           term: selectedTerm,
           year: parseInt(selectedYear),
-          marks: marksData || [],
+          marks: marksWithGrades,
           attendance: attendanceData,
           position: studentPositions[student.id] || null,
           total_students: students.length,
-          generated_at: new Date().toISOString()
+          generated_at: new Date().toISOString(),
+          is_primary: isPrimary,
+          is_a_level: isALevel,
+          grading_configs: isPrimary ? gradingConfigs : null
         };
         
         // Serialize to JSON string

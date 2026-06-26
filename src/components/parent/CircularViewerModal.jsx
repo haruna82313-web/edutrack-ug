@@ -20,8 +20,347 @@ const CircularViewerModal = ({ isOpen, onClose, doc }) => {
   const [reportData, setReportData] = useState(null);
   const [loadingReport, setLoadingReport] = useState(false);
   const [gradingConfigs, setGradingConfigs] = useState([]);
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
 
   const isReportCard = doc?.title?.startsWith('Report Card:');
+
+  // Helper to get ordinal suffix
+  const getOrdinalSuffix = (number) => {
+    const suffixes = ['th', 'st', 'nd', 'rd'];
+    const v = number % 100;
+    return number + (suffixes[(v - 20) % 10] || suffixes[v] || suffixes[0]);
+  };
+
+  // Helper function to generate PDF report card (same as ClassReportCards)
+  const downloadReportCardPdf = async () => {
+    if (!reportData) return;
+    
+    setIsGeneratingPdf(true);
+    try {
+      const { jsPDF } = await import('jspdf');
+      const { default: autoTable } = await import('jspdf-autotable');
+      
+      const docPdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+      const pageWidth = docPdf.internal.pageSize.getWidth();
+      let yPos = 10;
+
+      // School Name
+      docPdf.setFont('helvetica', 'bold');
+      docPdf.setFontSize(14);
+      docPdf.setTextColor(0, 0, 0);
+      docPdf.text(reportData.school?.name || 'SCHOOL NAME', pageWidth / 2, yPos + 8, { align: 'center' });
+
+      yPos += 14;
+
+      // Use saved level flags from snapshot if available
+      const isPrimary = reportData.is_primary ?? reportData.student?.schools?.type === 'primary';
+      const isALevel = reportData.is_a_level ?? (!isPrimary && (reportData.class_name?.toLowerCase().includes('a')));
+      
+      // Report Title
+      docPdf.setFont('helvetica', 'bold');
+      docPdf.setFontSize(13);
+      const levelTitle = isPrimary ? 'PRIMARY' : (isALevel ? "A' LEVEL" : "O' LEVEL");
+      docPdf.text(`${levelTitle} REPORT CARD`, pageWidth / 2, yPos, { align: 'center' });
+
+      yPos += 6;
+
+      // Term/Year Badge
+      const accentColor = isPrimary ? [220, 38, 38] : (isALevel ? [25, 52, 124] : [34, 102, 51]);
+      docPdf.setFillColor(accentColor[0], accentColor[1], accentColor[2]);
+      docPdf.rect(pageWidth / 2 - 25, yPos - 2, 50, 5, 'F');
+      docPdf.setTextColor(255, 255, 255);
+      docPdf.setFont('helvetica', 'bold');
+      docPdf.setFontSize(9);
+      docPdf.text(`${reportData.term} ${reportData.year}`, pageWidth / 2, yPos + 1, { align: 'center' });
+
+      yPos += 14;
+
+      // Student Info
+      docPdf.setTextColor(0, 0, 0);
+      docPdf.setFont('helvetica', 'bold');
+      docPdf.setFontSize(9);
+      docPdf.text('Student Name:', 15, yPos);
+      docPdf.setFont('helvetica', 'normal');
+      docPdf.text(reportData.student?.full_name || 'N/A', 50, yPos);
+
+      docPdf.setFont('helvetica', 'bold');
+      docPdf.text('Admission No.:', 120, yPos);
+      docPdf.setFont('helvetica', 'normal');
+      docPdf.text(reportData.student?.admission_no || 'N/A', 155, yPos);
+
+      yPos += 6;
+
+      docPdf.setFont('helvetica', 'bold');
+      docPdf.text('Class:', 15, yPos);
+      docPdf.setFont('helvetica', 'normal');
+      docPdf.text(reportData.class_name || '', 50, yPos);
+
+      docPdf.setFont('helvetica', 'bold');
+      docPdf.text('Date of Birth:', 120, yPos);
+      docPdf.setFont('helvetica', 'normal');
+      const dob = reportData.student?.date_of_birth ? new Date(reportData.student.date_of_birth).toLocaleDateString() : 'N/A';
+      docPdf.text(dob, 155, yPos);
+
+      yPos += 6;
+
+      docPdf.setFont('helvetica', 'bold');
+      docPdf.text('Term:', 15, yPos);
+      docPdf.setFont('helvetica', 'normal');
+      docPdf.text(reportData.term, 50, yPos);
+
+      docPdf.setFont('helvetica', 'bold');
+      docPdf.text('Session:', 120, yPos);
+      docPdf.setFont('helvetica', 'normal');
+      docPdf.text(`${reportData.year}/${parseInt(reportData.year) + 1}`, 155, yPos);
+
+      yPos += 10;
+
+      // Marks Table
+      const tableHeaders = isPrimary
+        ? [['SUBJECT', 'SCORE', 'OUT OF', 'GRADE', 'AGGREGATE', 'REMARK']]
+        : (isALevel 
+          ? [['SUBJECT', 'SCORE', 'OUT OF', 'GRADE', 'POINTS', 'REMARK']] 
+          : [['SUBJECT', 'SCORE', 'OUT OF', 'GRADE', 'REMARK']]);
+
+      const tableRows = (reportData.marks || []).map((m) => {
+        let gradeInfo;
+        if (m.grade) {
+          gradeInfo = { grade: m.grade, points: m.points };
+        } else if (isPrimary) {
+          gradeInfo = getPrimaryGrade(m.marks, gradingConfigs, m.max_marks);
+        } else if (isALevel) {
+          const subjectName = m.subjects?.name || '';
+          const isSubsidiary = subjectName.toUpperCase().includes('ICT') || 
+                               subjectName.toUpperCase().includes('GENERAL PAPER') || 
+                               subjectName.toUpperCase().includes('GP') ||
+                               subjectName.toUpperCase().includes('SUB MATHS') ||
+                               subjectName.toUpperCase().includes('SUB-MATHS') ||
+                               subjectName.toUpperCase().includes('SUBMATHS');
+          gradeInfo = isSubsidiary 
+            ? getALevelSubsidiaryGradeAndPoints(m.marks, m.max_marks)
+            : getALevelPrincipalGradeAndPoints(m.marks, m.max_marks);
+        } else {
+          gradeInfo = getOLevelGrade(m.marks, m.max_marks);
+        }
+
+        const row = [
+          m.subjects?.name || 'Unknown',
+          m.marks || '-',
+          m.max_marks || '-',
+          gradeInfo.grade
+        ];
+
+        if (isPrimary) {
+          row.push(getPrimaryGradeAggregate(gradeInfo.grade));
+        } else if (isALevel) {
+          row.push(gradeInfo.points);
+        }
+
+        row.push(m.comments || '');
+        return row;
+      });
+
+      const accentColorLight = isPrimary ? [254, 226, 226] : (isALevel ? [220, 230, 245] : [230, 245, 230]);
+
+      autoTable(docPdf, {
+        head: tableHeaders,
+        body: tableRows,
+        startY: yPos,
+        theme: 'grid',
+        margin: { left: 15, right: 15 },
+        styles: { fontSize: 8, cellPadding: 2.5, textColor: [0, 0, 0], lineColor: accentColor, lineWidth: 0.3 },
+        headStyles: { fillColor: accentColor, textColor: [255, 255, 255], fontStyle: 'bold', lineWidth: 0.5 },
+        alternateRowStyles: { fillColor: accentColorLight },
+        bodyStyles: { lineColor: accentColor, lineWidth: 0.2 }
+      });
+
+      yPos = docPdf.lastAutoTable?.finalY || yPos + 50;
+
+      // Summary Stats
+      const safeMarksData = reportData.marks || [];
+      const totalMarks = safeMarksData.reduce((sum, m) => sum + (parseFloat(m.marks) || 0), 0);
+      const avgScore = safeMarksData.length > 0 ? (totalMarks / safeMarksData.length).toFixed(2) : '0.00';
+
+      let stats;
+      if (isPrimary) {
+        const { totalAggregates, division } = calculatePrimaryAggregatesAndDivision(safeMarksData, gradingConfigs);
+        stats = [
+          { label: 'GRAND TOTAL', value: totalMarks.toFixed(0) },
+          { label: 'AVERAGE SCORE', value: avgScore },
+          { label: 'TOTAL AGGREGATES', value: totalAggregates },
+          { label: 'DIVISION', value: division },
+          { label: 'POSITION IN CLASS', value: reportData.position ? getOrdinalSuffix(reportData.position) : 'N/A' },
+          { label: 'OUT OF', value: 'Students' }
+        ];
+      } else if (isALevel) {
+        let totalPoints = 0;
+        safeMarksData.forEach(m => {
+          let gradeInfo;
+          const subjectName = m.subjects?.name || '';
+          const isSubsidiary = subjectName.toUpperCase().includes('ICT') || 
+                               subjectName.toUpperCase().includes('GENERAL PAPER') || 
+                               subjectName.toUpperCase().includes('GP') ||
+                               subjectName.toUpperCase().includes('SUB MATHS') ||
+                               subjectName.toUpperCase().includes('SUB-MATHS') ||
+                               subjectName.toUpperCase().includes('SUBMATHS');
+          
+          if (m.grade && m.points !== undefined) {
+            gradeInfo = { points: m.points };
+          } else if (isSubsidiary) {
+            gradeInfo = getALevelSubsidiaryGradeAndPoints(m.marks, m.max_marks);
+          } else {
+            gradeInfo = getALevelPrincipalGradeAndPoints(m.marks, m.max_marks);
+          }
+          totalPoints += gradeInfo.points || 0;
+        });
+
+        stats = [
+          { label: 'GRAND TOTAL', value: totalMarks.toFixed(0) },
+          { label: 'AVERAGE SCORE', value: avgScore },
+          { label: 'TOTAL POINTS', value: totalPoints.toString() },
+          { label: 'MAX POINTS', value: '20' },
+          { label: 'POSITION IN CLASS', value: reportData.position ? getOrdinalSuffix(reportData.position) : 'N/A' },
+          { label: 'OUT OF', value: 'Students' }
+        ];
+      } else {
+        stats = [
+          { label: 'GRAND TOTAL', value: totalMarks.toFixed(0) },
+          { label: 'AVERAGE SCORE', value: avgScore },
+          { label: 'POSITION IN CLASS', value: reportData.position ? getOrdinalSuffix(reportData.position) : 'N/A' },
+          { label: 'OUT OF', value: 'Students' }
+        ];
+      }
+
+      docPdf.setFont('helvetica', 'bold');
+      docPdf.setFontSize(9);
+      docPdf.setTextColor(0, 0, 0);
+
+      const colWidth = (pageWidth - 30) / 2;
+
+      stats.forEach((stat, idx) => {
+        const row = Math.floor(idx / 2);
+        const col = idx % 2;
+        const xPos = 15 + col * colWidth;
+        const statYPos = yPos + row * 8;
+
+        docPdf.setDrawColor(accentColor[0], accentColor[1], accentColor[2]);
+        docPdf.rect(xPos, statYPos, colWidth - 2, 7);
+
+        docPdf.setFont('helvetica', 'bold');
+        docPdf.setFontSize(8);
+        docPdf.text(stat.label, xPos + 3, statYPos + 3);
+
+        docPdf.setFont('helvetica', 'bold');
+        docPdf.setFontSize(10);
+        docPdf.text(String(stat.value), xPos + colWidth - 8, statYPos + 3, { align: 'right' });
+      });
+
+      yPos += 22;
+
+      // Grade Key
+      docPdf.setFillColor(accentColorLight[0], accentColorLight[1], accentColorLight[2]);
+      docPdf.rect(15, yPos, pageWidth - 30, 18, 'F');
+
+      docPdf.setFont('helvetica', 'bold');
+      docPdf.setFontSize(9);
+      docPdf.setTextColor(accentColor[0], accentColor[1], accentColor[2]);
+      docPdf.text('GRADE KEY', 20, yPos + 4);
+
+      docPdf.setFont('helvetica', 'normal');
+      docPdf.setFontSize(8);
+      docPdf.setTextColor(0, 0, 0);
+      let gradeKey;
+      if (isPrimary && gradingConfigs.length > 0) {
+        gradeKey = gradingConfigs.map(config => 
+          `${config.grade_name}: ${config.min_score} - ${config.max_score} (${config.description})`
+        );
+      } else if (isALevel) {
+        gradeKey = [
+          'A: 6 points',
+          'B: 5 points',
+          'C: 4 points',
+          'D: 3 points',
+          'E: 2 points',
+          'O: 1 point',
+          'F: 0 points'
+        ];
+      } else {
+        gradeKey = [
+          'A: 80 - 100',
+          'B: 70 - 79',
+          'C: 50 - 69',
+          'D: 40 - 49',
+          'E: 0 - 39'
+        ];
+      }
+      
+      gradeKey.forEach((grade, idx) => {
+        const col = idx % 3;
+        const gradeColWidth = 55;
+        const gradeRow = Math.floor(idx / 3);
+        docPdf.text(grade, 20 + col * gradeColWidth, yPos + 8 + gradeRow * 4);
+      });
+
+      yPos += 20;
+
+      // Attendance
+      docPdf.setFillColor(accentColorLight[0], accentColorLight[1], accentColorLight[2]);
+      docPdf.rect(15, yPos, pageWidth - 30, 14, 'F');
+
+      docPdf.setFont('helvetica', 'bold');
+      docPdf.setFontSize(9);
+      docPdf.setTextColor(accentColor[0], accentColor[1], accentColor[2]);
+      docPdf.text('ATTENDANCE', 20, yPos + 4);
+
+      docPdf.setFont('helvetica', 'normal');
+      docPdf.setFontSize(8);
+      docPdf.setTextColor(0, 0, 0);
+      docPdf.text(`Present: ${reportData.attendance.present}`, 20, yPos + 9);
+      docPdf.text(`Absent: ${reportData.attendance.absent}`, 70, yPos + 9);
+      docPdf.text(`Rate: ${reportData.attendance.rate}%`, 120, yPos + 9);
+
+      docPdf.setFont('helvetica', 'bold');
+      docPdf.text('CONDUCT', 20, yPos + 12);
+      docPdf.setFont('helvetica', 'normal');
+      docPdf.text('Excellent', 50, yPos + 12);
+
+      yPos += 16;
+
+      // Comment
+      docPdf.setFillColor(accentColorLight[0], accentColorLight[1], accentColorLight[2]);
+      docPdf.rect(15, yPos, pageWidth - 30, 20, 'F');
+
+      docPdf.setFont('helvetica', 'bold');
+      docPdf.setFontSize(9);
+      docPdf.setTextColor(accentColor[0], accentColor[1], accentColor[2]);
+      docPdf.text("CLASS TEACHER'S COMMENT", 20, yPos + 4);
+
+      docPdf.setFont('helvetica', 'normal');
+      docPdf.setFontSize(8);
+      docPdf.setTextColor(0, 0, 0);
+
+      const hasSubjectComments = (reportData.marks || []).some(m => m.comments);
+      let comment;
+
+      if (hasSubjectComments) {
+        const subjectComments = (reportData.marks || []).filter(m => m.comments).map(m => m.comments);
+        comment = `${reportData.student?.full_name}: ${subjectComments.join(' ')}`;
+      } else {
+        comment = `${reportData.student?.full_name} demonstrates excellent understanding of concepts and shows great commitment to studies.`;
+      }
+
+      docPdf.text(comment, 20, yPos + 9, { maxWidth: pageWidth - 40, align: 'left' });
+
+      // Download the PDF
+      const filename = `${reportData.student?.full_name?.replace(/\s+/g, '_') || 'Student'}_${reportData.term}_${reportData.year}_Report_Card.pdf`;
+      docPdf.save(filename);
+    } catch (err) {
+      console.error('Error generating PDF:', err);
+      alert('Failed to generate PDF. Please try again.');
+    } finally {
+      setIsGeneratingPdf(false);
+    }
+  };
 
   // If it's a report card, fetch student data
   useEffect(() => {
@@ -40,6 +379,19 @@ const CircularViewerModal = ({ isOpen, onClose, doc }) => {
           // If it has marks, it's a snapshot!
           if (parsed.marks || (parsed.student && parsed.term)) {
             setReportData(parsed);
+            
+            // Use saved grading configs from snapshot if available, otherwise fetch
+            if (parsed.grading_configs) {
+              setGradingConfigs(parsed.grading_configs);
+            } else if (parsed.school?.id) {
+              const { data: configData } = await supabase
+                .from('grading_configs')
+                .select('*')
+                .eq('school_id', parsed.school.id)
+                .order('min_score', { ascending: false });
+              if (configData) setGradingConfigs(configData);
+            }
+            
             setLoadingReport(false);
             return;
           }
@@ -75,7 +427,7 @@ const CircularViewerModal = ({ isOpen, onClose, doc }) => {
       if (doc.student_id) {
         const { data: studentData } = await supabase
           .from('students')
-          .select('*, classes(name)')
+          .select('*, classes(*), schools(*)')
           .eq('id', doc.student_id)
           .single();
         student = studentData;
@@ -85,7 +437,7 @@ const CircularViewerModal = ({ isOpen, onClose, doc }) => {
         if (studentNameInTitle) {
           const { data: studentsData } = await supabase
             .from('students')
-            .select('*, classes(name)')
+            .select('*, classes(*), schools(*)')
             .eq('full_name', studentNameInTitle);
           if (studentsData && studentsData.length > 0) {
             student = studentsData[0];
@@ -96,6 +448,17 @@ const CircularViewerModal = ({ isOpen, onClose, doc }) => {
       if (student) {
         data.student = student;
         data.class_name = student.classes?.name || data.class_name;
+        data.school = student.schools || null;
+
+        // Fetch grading configs for primary schools
+        if (student.schools?.type === 'primary' && student.school_id) {
+          const { data: configData } = await supabase
+            .from('grading_configs')
+            .select('*')
+            .eq('school_id', student.school_id)
+            .order('min_score', { ascending: false });
+          if (configData) setGradingConfigs(configData);
+        }
 
         // Fetch marks for the student
         // Try exact term/year first
@@ -139,7 +502,7 @@ const CircularViewerModal = ({ isOpen, onClose, doc }) => {
                 const classmateMarks = classMarks.filter(m => m.student_id === classmate.id);
                 if (classmateMarks.length > 0) {
                   const total = classmateMarks.reduce((sum, m) => sum + (m.marks / m.max_marks * 100), 0);
-                  studentAverages[classmate.id] = total / classMarks.length;
+                  studentAverages[classmate.id] = total / classmateMarks.length;
                 } else {
                   studentAverages[classmate.id] = 0;
                 }
@@ -169,7 +532,7 @@ const CircularViewerModal = ({ isOpen, onClose, doc }) => {
       }
 
       // Fetch school info (if we can)
-      if (doc.school_id) {
+      if (doc.school_id && !data.school) {
         const { data: school } = await supabase
           .from('schools')
           .select('*')
@@ -256,7 +619,7 @@ const CircularViewerModal = ({ isOpen, onClose, doc }) => {
       
       <div className="relative w-full max-w-2xl bg-slate-900 rounded-[2.5rem] border border-white/10 shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300 flex flex-col max-h-[85vh]">
         {/* Header */}
-        <div className="p-6 border-b border-white/5 flex items-center justify-between bg-white/[0.02]">
+        <div className="p-6 border-b border-white/5 flex items-center justify-between bg-white/[0.01]">
           <div className="flex items-center gap-3">
             <div className={`w-10 h-10 rounded-xl flex items-center justify-center border ${isReportCard ? 'bg-primary-600/20 text-primary-400 border-primary-500/20' : 'bg-aurora-amber/10 text-aurora-amber border-aurora-amber/20'}`}>
               {isReportCard ? <GraduationCap size={20} /> : (doc.file_url ? getFileIcon(doc.file_type) : <FileText size={20} />)}
@@ -307,7 +670,7 @@ const CircularViewerModal = ({ isOpen, onClose, doc }) => {
                       <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest">Student</p>
                       <p className="text-sm sm:text-base font-black text-white">{reportData.student?.full_name || 'Student Name'}</p>
                       {reportData.position && (
-                        <p className="text-[9px] font-black text-aurora-amber">Position: #{reportData.position}</p>
+                        <p className="text-[9px] font-black text-aurora-amber">Position: #{getOrdinalSuffix(reportData.position)}</p>
                       )}
                       <p className="text-[9px] sm:text-xs font-bold text-slate-400">{reportData.class_name || 'Class'}</p>
                       <p className="text-[9px] sm:text-xs font-bold text-slate-400">{reportData.term} {reportData.year}</p>
@@ -334,13 +697,45 @@ const CircularViewerModal = ({ isOpen, onClose, doc }) => {
                           </thead>
                           <tbody className="divide-y divide-slate-800">
                             {reportData.marks.map((m, idx) => {
-                              const { grade } = getOLevelGrade(m.marks, m.max_marks);
+                              // Determine grading system
+                              const isPrimary = reportData.student?.schools?.type === 'primary';
+                              const isALevel = !isPrimary && (reportData.class_name?.toLowerCase().includes('a'));
+                              
+                              let gradeInfo;
+                              if (m.grade) {
+                                gradeInfo = { grade: m.grade, points: m.points };
+                              } else if (isPrimary) {
+                                gradeInfo = getPrimaryGrade(m.marks, gradingConfigs, m.max_marks);
+                              } else if (isALevel) {
+                                const subjectName = m.subjects?.name || '';
+                                const isSubsidiary = subjectName.toUpperCase().includes('ICT') || 
+                                                     subjectName.toUpperCase().includes('GENERAL PAPER') || 
+                                                     subjectName.toUpperCase().includes('GP') ||
+                                                     subjectName.toUpperCase().includes('SUB MATHS') ||
+                                                     subjectName.toUpperCase().includes('SUB-MATHS') ||
+                                                     subjectName.toUpperCase().includes('SUBMATHS');
+                                gradeInfo = isSubsidiary 
+                                  ? getALevelSubsidiaryGradeAndPoints(m.marks, m.max_marks)
+                                  : getALevelPrincipalGradeAndPoints(m.marks, m.max_marks);
+                              } else {
+                                gradeInfo = getOLevelGrade(m.marks, m.max_marks);
+                              }
+                              
                               const getGradeColor = () => {
-                                switch (grade) {
-                                  case 'A': return 'text-aurora-emerald bg-aurora-emerald/10 border border-aurora-emerald/20';
-                                  case 'B': return 'text-aurora-cyan bg-aurora-cyan/10 border border-aurora-cyan/20';
-                                  case 'C': return 'text-aurora-amber bg-aurora-amber/10 border border-aurora-amber/20';
-                                  default: return 'text-aurora-rose bg-aurora-rose/10 border border-aurora-rose/20';
+                                if (isPrimary) {
+                                  switch (gradeInfo.grade) {
+                                    case '1': return 'text-aurora-emerald bg-aurora-emerald/10 border border-aurora-emerald/20';
+                                    case '2': return 'text-aurora-cyan bg-aurora-cyan/10 border border-aurora-cyan/20';
+                                    case '3': return 'text-aurora-amber bg-aurora-amber/10 border border-aurora-amber/20';
+                                    default: return 'text-aurora-rose bg-aurora-rose/10 border border-aurora-rose/20';
+                                  }
+                                } else {
+                                  switch (gradeInfo.grade) {
+                                    case 'A': return 'text-aurora-emerald bg-aurora-emerald/10 border border-aurora-emerald/20';
+                                    case 'B': return 'text-aurora-cyan bg-aurora-cyan/10 border border-aurora-cyan/20';
+                                    case 'C': return 'text-aurora-amber bg-aurora-amber/10 border border-aurora-amber/20';
+                                    default: return 'text-aurora-rose bg-aurora-rose/10 border border-aurora-rose/20';
+                                  }
                                 }
                               };
                               return (
@@ -350,7 +745,7 @@ const CircularViewerModal = ({ isOpen, onClose, doc }) => {
                                   <td className="py-3 px-3 text-center text-slate-500 font-bold">{m.max_marks}</td>
                                   <td className="py-3 px-3 text-center">
                                     <span className={`inline-block px-2.5 py-1 rounded-full text-[7px] font-black uppercase tracking-widest ${getGradeColor()}`}>
-                                      {grade}
+                                      {gradeInfo.grade}
                                     </span>
                                   </td>
                                   <td className="py-3 px-3 text-[9px] text-slate-400">{m.comments || ''}</td>
@@ -457,19 +852,31 @@ const CircularViewerModal = ({ isOpen, onClose, doc }) => {
             <span className="text-[7px] sm:text-[8px] font-black text-slate-500 uppercase tracking-widest">Published by Administration</span>
           </div>
           <div className="flex items-center gap-2">
+            {isReportCard && reportData && (
+              <button 
+                onClick={downloadReportCardPdf}
+                disabled={isGeneratingPdf}
+                className="flex items-center gap-2 px-4 py-2.5 bg-aurora-cyan/20 hover:bg-aurora-cyan/30 rounded-xl text-[8px] sm:text-[9px] font-black uppercase tracking-widest transition-all text-aurora-cyan border border-aurora-cyan/20 disabled:opacity-50"
+              >
+                {isGeneratingPdf ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
+                {isGeneratingPdf ? 'Generating...' : 'Download PDF'}
+              </button>
+            )}
             {doc.file_url && (
               <button 
                 onClick={() => downloadFile(doc)}
                 className="flex items-center gap-2 px-4 py-2.5 bg-emerald-500/10 hover:bg-emerald-500/20 rounded-xl text-[8px] sm:text-[9px] font-black uppercase tracking-widest transition-all text-emerald-400 border border-emerald-500/20"
               >
-                <Download size={12} sm:size={14} /> Download
+                <Download size={12} />
+                Download File
               </button>
             )}
             <button 
               onClick={printDocument}
               className="flex items-center gap-2 px-6 py-2.5 bg-primary-600 hover:bg-primary-500 rounded-xl text-[8px] sm:text-[9px] font-black uppercase tracking-widest transition-all text-white shadow-glow"
             >
-              <Printer size={12} sm:size={14} /> Print
+              <Printer size={12} />
+              Print
             </button>
           </div>
         </div>

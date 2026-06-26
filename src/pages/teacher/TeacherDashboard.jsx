@@ -450,8 +450,35 @@ By continuing to use the EduTrack Staff Terminal, you acknowledge your responsib
   const openAttendance = async (lesson) => {
     setActiveLesson(lesson);
     setLoading(true);
-    const { data } = await supabase.from('students').select('*').eq('class_id', lesson.class_id).order('full_name');
-    setStudents(data || []);
+    
+    // First get all active students in the class
+    const { data: allStudents } = await supabase.from('students').select('*').eq('class_id', lesson.class_id).eq('status', 'active').order('full_name');
+    
+    if (!allStudents || allStudents.length === 0) {
+      setStudents([]);
+      setAbsentees([]);
+      setLoading(false);
+      return;
+    }
+    
+    // Get students enrolled in this subject for current academic year
+    const currentYear = new Date().getFullYear().toString();
+    const { data: enrolledStudentIds } = await supabase
+      .from('student_subjects')
+      .select('student_id')
+      .eq('subject_id', lesson.subject_id)
+      .eq('academic_year', currentYear);
+    
+    if (enrolledStudentIds && enrolledStudentIds.length > 0) {
+      // Filter to only show enrolled students
+      const enrolledSet = new Set(enrolledStudentIds.map(e => e.student_id));
+      const filteredStudents = allStudents.filter(s => enrolledSet.has(s.id));
+      setStudents(filteredStudents);
+    } else {
+      // If no subject assignments yet, show all students (backward compatibility)
+      setStudents(allStudents);
+    }
+    
     setAbsentees([]); 
     setLoading(false);
   };
