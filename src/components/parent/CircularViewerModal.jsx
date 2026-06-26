@@ -7,11 +7,19 @@ import {
 } from 'lucide-react';
 import { docTypeLabel } from '../../lib/documentTypes';
 import { supabase } from '../../lib/supabase';
-import { getOLevelGrade } from '../../utils/uneb-engine';
+import { 
+  getOLevelGrade, 
+  getPrimaryGrade, 
+  calculatePrimaryAggregatesAndDivision, 
+  getPrimaryGradeAggregate,
+  getALevelPrincipalGradeAndPoints,
+  getALevelSubsidiaryGradeAndPoints
+} from '../../utils/uneb-engine';
 
 const CircularViewerModal = ({ isOpen, onClose, doc }) => {
   const [reportData, setReportData] = useState(null);
   const [loadingReport, setLoadingReport] = useState(false);
+  const [gradingConfigs, setGradingConfigs] = useState([]);
 
   const isReportCard = doc?.title?.startsWith('Report Card:');
 

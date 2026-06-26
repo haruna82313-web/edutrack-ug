@@ -2,10 +2,11 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
-import { Plus, GraduationCap, Loader2, LayoutGrid, Calendar as CalendarIcon, ArrowRight, Search, Users } from 'lucide-react';
+import { Plus, GraduationCap, Loader2, LayoutGrid, Calendar as CalendarIcon, ArrowRight, Search, Users, BookOpen } from 'lucide-react';
 import EditModal from '../../components/admin/EditModal';
 import RowActions from '../../components/admin/RowActions';
 import { deleteClassCascade } from '../../lib/adminCrud';
+import { BulkSubjectAssignModal } from '../../components/admin/BulkSubjectAssignModal';
 
 import { useNotification } from '../../context/NotificationContext';
 
@@ -20,6 +21,9 @@ const Classes = () => {
   const [editing, setEditing] = useState(null);
   const [saving, setSaving] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [showBulkModal, setShowBulkModal] = useState(false);
+  const [selectedClassForBulk, setSelectedClassForBulk] = useState(null);
+  const [schoolId, setSchoolId] = useState(null);
 
   const schoolType = profile?.schools?.type || 'secondary';
   const placeholder = schoolType === 'primary' ? 'e.g. Primary 5 East' : 'e.g. Senior 4 West';
@@ -39,9 +43,18 @@ const Classes = () => {
   const fetchClasses = async () => {
     try {
       setLoading(true);
+      const { data: profile } = await supabase
+        .from('users')
+        .select('school_id')
+        .eq('id', user.id)
+        .single();
+      
+      setSchoolId(profile?.school_id);
+
       const { data, error } = await supabase
         .from('classes')
         .select('*, students(gender, status)')
+        .eq('school_id', profile?.school_id)
         .order('name', { ascending: true });
 
       if (error) throw error;
@@ -252,6 +265,17 @@ const Classes = () => {
                         </td>
                         <td className="px-8 py-6 text-right">
                         <div className="flex items-center justify-end gap-2">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedClassForBulk(cls);
+                              setShowBulkModal(true);
+                            }}
+                            className="p-3 text-slate-600 hover:text-violet-400 hover:bg-violet-500/10 rounded-xl transition-all"
+                            title="Bulk Assign Subjects"
+                          >
+                            <BookOpen size={18} />
+                          </button>
                           <RowActions
                             onEdit={() => setEditing({ id: cls.id, name: cls.name })}
                             onDelete={() => deleteClass(cls.id)}
@@ -296,6 +320,17 @@ const Classes = () => {
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedClassForBulk(cls);
+                          setShowBulkModal(true);
+                        }}
+                        className="p-2 text-slate-600 hover:text-violet-400 hover:bg-violet-500/10 rounded-xl transition-all"
+                        title="Bulk Assign Subjects"
+                      >
+                        <BookOpen size={16} />
+                      </button>
                       <RowActions
                         onEdit={() => setEditing({ id: cls.id, name: cls.name })}
                         onDelete={() => deleteClass(cls.id)}
@@ -317,6 +352,16 @@ const Classes = () => {
           onChange={(e) => setEditing({ ...editing, name: e.target.value })}
         />
       </EditModal>
+
+      <BulkSubjectAssignModal
+        classInfo={selectedClassForBulk}
+        isOpen={showBulkModal}
+        onClose={() => {
+          setShowBulkModal(false);
+          setSelectedClassForBulk(null);
+        }}
+        schoolId={schoolId}
+      />
     </div>
   );
 };

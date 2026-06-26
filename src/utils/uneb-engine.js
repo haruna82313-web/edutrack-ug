@@ -204,8 +204,8 @@ export const getPrimaryGradeAggregate = (grade) => {
   const num = parseInt(gradeMatch[2]);
   
   if (letter === 'D') return num; // D1=1, D2=2
-  if (letter === 'C') return 2 + num; // C3=3, C4=4, C5=5, C6=6
-  if (letter === 'P') return 6 + num; // P7=7, P8=8
+  if (letter === 'C') return num; // C3=3, C4=4, C5=5, C6=6
+  if (letter === 'P') return num; // P7=7, P8=8
   if (letter === 'F') return 9; // F9=9
   
   return 0;

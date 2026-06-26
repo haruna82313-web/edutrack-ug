@@ -216,6 +216,15 @@ const ClassReportCards = () => {
 
   // Get student's marks for selected term/year
   const getStudentMarks = async (studentId) => {
+    // First get the student's assigned subjects
+    const { data: assignedSubjects } = await supabase
+      .from('student_subjects')
+      .select('subject_id')
+      .eq('student_id', studentId)
+      .eq('academic_year', selectedYear);
+    
+    const assignedSubjectIds = new Set(assignedSubjects?.map(a => a.subject_id) || []);
+    
     const { data: marksData, error } = await supabase
       .from('student_marks')
       .select('*, subjects(name), classes(name)')
@@ -239,6 +248,13 @@ const ClassReportCards = () => {
     });
     
     markMap.forEach(mark => latestMarks.push(mark));
+    
+    // Filter to only show assigned subjects (if there are any assignments)
+    if (assignedSubjectIds.size > 0) {
+      return latestMarks.filter(mark => assignedSubjectIds.has(mark.subject_id));
+    }
+    
+    // If no assignments found, show all marks (backward compatibility)
     return latestMarks;
   };
 
@@ -661,8 +677,24 @@ const ClassReportCards = () => {
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(8);
       doc.setTextColor(0, 0, 0);
-      const comment = `${student.full_name} demonstrates excellent understanding of concepts and shows great commitment to studies. 
-He is encouraged to maintain his outstanding performance.`;
+      
+      // Use subject-specific comments if available, otherwise use gender-aware generic comment
+      const hasSubjectComments = (marksData || []).some(m => m.comments);
+      let comment;
+      
+      if (hasSubjectComments) {
+        // If there are subject-specific comments, combine them or use the first one
+        const subjectComments = (marksData || []).filter(m => m.comments).map(m => m.comments);
+        comment = `${student.full_name}: ${subjectComments.join(' ')}`;
+      } else {
+        // Gender-aware generic comment
+        const isFemale = student.gender === 'Female';
+        const pronoun = isFemale ? 'She' : 'He';
+        const pronounObjective = isFemale ? 'Her' : 'His';
+        comment = `${student.full_name} demonstrates excellent understanding of concepts and shows great commitment to studies. 
+${pronoun} is encouraged to maintain ${pronounObjective.toLowerCase()} outstanding performance.`;
+      }
+      
       doc.text(comment, 20, yPos + 9, { maxWidth: pageWidth - 40, align: 'left' });
 
       yPos += 22;

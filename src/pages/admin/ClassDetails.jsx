@@ -7,6 +7,8 @@ import {
   Loader2, GraduationCap, Calendar, BookOpen, ArrowRight, Star, ShieldCheck, Target, TrendingUp, FileSpreadsheet, FileText, CheckSquare, Square, ArrowUp, BookOpenCheck, Award
 } from 'lucide-react';
 import StudentDetailsModal from '../../components/admin/StudentDetailsModal';
+import { BulkSubjectAssignModal } from '../../components/admin/BulkSubjectAssignModal';
+import { useNotification } from '../../context/NotificationContext';
 
 const LEADERSHIP_ROLES = [
   { value: 'class_rep', label: 'Class Representative' },
@@ -46,6 +48,8 @@ const ClassDetails = () => {
     syllabusProgress: 0
   });
   const [showLevelSelectModal, setShowLevelSelectModal] = useState(false);
+  const [showBulkModal, setShowBulkModal] = useState(false);
+  const [schoolId, setSchoolId] = useState(null);
   const { profile } = useAuth();
 
   useEffect(() => {
@@ -67,8 +71,9 @@ const ClassDetails = () => {
       setClassInfo(cls);
       
       // Get school ID
-      const { data: profile } = await supabase.from('users').select('school_id').eq('id', user.id).single();
-      const schoolId = profile?.school_id;
+      const { data: profileData } = await supabase.from('users').select('school_id').eq('id', user.id).single();
+      const schoolId = profileData?.school_id;
+      setSchoolId(schoolId);
       
       // 2. Fetch All Other Classes (for promotion)
       const { data: allCls, error: allClsErr } = schoolId 
@@ -204,7 +209,7 @@ const ClassDetails = () => {
     return (
       <div className="h-[60vh] flex flex-col items-center justify-center">
         <Loader2 className="animate-spin text-primary-400 mb-4" size={32} />
-        <p className="text-slate-600 font-bold uppercase tracking-widest text-[10px]">Accessing Class Registry...</p>
+        <p className="text-slate-600 font-black uppercase tracking-widest text-[10px]">Accessing Class Registry...</p>
       </div>
     );
   }
@@ -247,7 +252,8 @@ const ClassDetails = () => {
               </div>
             </div>
           </div>
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4">
+          {/* Filters */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full sm:w-auto">
             <div className="relative flex items-center bg-slate-900 px-4 py-2 rounded-2xl shadow-xl border border-slate-800">
               <Users className="text-slate-500 mr-2" size={16} />
               <select
@@ -276,24 +282,61 @@ const ClassDetails = () => {
                 </button>
               )}
             </div>
-            <button 
-              onClick={() => setShowLevelSelectModal(true)}
-              className="btn-primary py-3 lg:py-4 px-6 lg:px-8 shadow-glow self-start md:self-auto text-[10px] lg:text-xs font-black uppercase tracking-widest"
-            >
-              <FileText size={16} /> Report Cards
-            </button>
-            <Link 
-              to="/students" 
-              className="py-3 lg:py-4 px-6 lg:px-8 bg-white/5 border border-white/10 rounded-2xl text-slate-300 text-[10px] lg:text-xs font-black uppercase tracking-widest hover:bg-white/10 transition-all self-start md:self-auto"
-            >
-              <UserPlus size={16} /> Enroll Student
-            </Link>
           </div>
         </div>
       </div>
 
-      {/* Stats Quick View */}
+      {/* Professional Buttons Grid - 3 columns on ALL screen sizes! */}
+      <div className="grid grid-cols-3 gap-4 lg:gap-6 mb-4 lg:mb-6">
+        {/* Assign Subjects Button */}
+        <button 
+          onClick={() => setShowBulkModal(true)}
+          className="bg-slate-900 p-3 lg:p-6 rounded-2xl lg:rounded-3xl border border-violet-500/20 shadow-xl hover:border-violet-500/50 hover:bg-violet-500/5 transition-all group relative overflow-hidden"
+        >
+          <div className="absolute top-0 right-0 w-10 h-10 lg:w-16 lg:h-16 bg-violet-500/5 rounded-bl-3xl transition-all group-hover:w-16 group-hover:h-16"></div>
+          <div className="flex items-center gap-2 mb-1">
+            <BookOpen size={14} className="text-violet-400" />
+            <p className="text-[7px] lg:text-[10px] font-black text-slate-500 uppercase tracking-widest hidden lg:block">Subjects</p>
+          </div>
+          <p className="text-xs lg:text-lg font-black text-white tracking-tight">
+            Assign
+          </p>
+        </button>
+
+        {/* Report Cards Button */}
+        <button 
+          onClick={() => setShowLevelSelectModal(true)}
+          className="bg-slate-900 p-3 lg:p-6 rounded-2xl lg:rounded-3xl border border-primary-500/20 shadow-xl hover:border-primary-500/50 hover:bg-primary-500/5 transition-all group relative overflow-hidden"
+        >
+          <div className="absolute top-0 right-0 w-10 h-10 lg:w-16 lg:h-16 bg-primary-500/5 rounded-bl-3xl transition-all group-hover:w-16 group-hover:h-16"></div>
+          <div className="flex items-center gap-2 mb-1">
+            <FileText size={14} className="text-primary-400" />
+            <p className="text-[7px] lg:text-[10px] font-black text-slate-500 uppercase tracking-widest hidden lg:block">Reports</p>
+          </div>
+          <p className="text-xs lg:text-lg font-black text-white tracking-tight">
+            Generate
+          </p>
+        </button>
+
+        {/* Enroll Student Button */}
+        <Link 
+          to="/students" 
+          className="bg-slate-900 p-3 lg:p-6 rounded-2xl lg:rounded-3xl border border-emerald-500/20 shadow-xl hover:border-emerald-500/50 hover:bg-emerald-500/5 transition-all group relative overflow-hidden"
+        >
+          <div className="absolute top-0 right-0 w-10 h-10 lg:w-16 lg:h-16 bg-emerald-500/5 rounded-bl-3xl transition-all group-hover:w-16 group-hover:h-16"></div>
+          <div className="flex items-center gap-2 mb-1">
+            <UserPlus size={14} className="text-emerald-400" />
+            <p className="text-[7px] lg:text-[10px] font-black text-slate-500 uppercase tracking-widest hidden lg:block">Students</p>
+          </div>
+          <p className="text-xs lg:text-lg font-black text-white tracking-tight">
+            Enroll
+          </p>
+        </Link>
+      </div>
+
+      {/* Professional Insights/Stats Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 lg:gap-6">
+        {/* Performance Insight */}
         <div className="bg-slate-900 p-5 lg:p-6 rounded-2xl lg:rounded-3xl border border-slate-800 shadow-xl relative overflow-hidden group">
           <div className="absolute top-0 right-0 w-16 h-16 bg-emerald-500/5 rounded-bl-3xl transition-all group-hover:w-20 group-hover:h-20"></div>
           <div className="flex items-center gap-3 mb-2">
@@ -307,6 +350,8 @@ const ClassDetails = () => {
             </span>
           </p>
         </div>
+
+        {/* Attendance Insight */}
         <div className="bg-slate-900 p-5 lg:p-6 rounded-2xl lg:rounded-3xl border border-slate-800 shadow-xl relative overflow-hidden group">
           <div className="absolute top-0 right-0 w-16 h-16 bg-aurora-cyan/5 rounded-bl-3xl transition-all group-hover:w-20 group-hover:h-20"></div>
           <div className="flex items-center gap-3 mb-2">
@@ -320,7 +365,9 @@ const ClassDetails = () => {
             </span>
           </p>
         </div>
-        <div className="bg-slate-900 p-5 lg:p-6 rounded-2xl lg:rounded-3xl border border-slate-800 shadow-xl sm:col-span-2 lg:col-span-1 relative overflow-hidden group">
+
+        {/* Syllabus Insight */}
+        <div className="bg-slate-900 p-5 lg:p-6 rounded-2xl lg:rounded-3xl border border-slate-800 shadow-xl relative overflow-hidden group">
           <div className="absolute top-0 right-0 w-16 h-16 bg-aurora-violet/5 rounded-bl-3xl transition-all group-hover:w-20 group-hover:h-20"></div>
           <div className="flex items-center gap-3 mb-2">
             <BookOpen size={14} className="text-aurora-violet" />
@@ -370,7 +417,7 @@ const ClassDetails = () => {
                   </button>
                 </th>
                 <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Student Name</th>
-                <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Guardian Contact</th>
+                <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest hidden sm:table-cell">Guardian Contact</th>
                 <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Operations</th>
               </tr>
             </thead>
@@ -536,6 +583,13 @@ const ClassDetails = () => {
         student={selectedStudent} 
         open={showDetails} 
         onClose={() => setShowDetails(false)} 
+      />
+
+      <BulkSubjectAssignModal
+        classInfo={classInfo}
+        isOpen={showBulkModal}
+        onClose={() => setShowBulkModal(false)}
+        schoolId={schoolId}
       />
 
       {/* Level Selection Modal */}

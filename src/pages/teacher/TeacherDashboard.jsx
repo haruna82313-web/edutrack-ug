@@ -345,13 +345,39 @@ By continuing to use the EduTrack Staff Terminal, you acknowledge your responsib
   const fetchStudentsForMarks = async (classId) => {
     if (!classId) return;
     setLoading(true);
-    const { data } = await supabase
+    
+    // First get all active students in the class
+    const { data: allStudents } = await supabase
       .from('students')
       .select('*')
       .eq('class_id', classId)
       .eq('status', 'active')
       .order('full_name');
-    setStudents(data || []);
+    
+    if (!selectedSubject) {
+      // If no subject selected yet, show all students
+      setStudents(allStudents || []);
+    } else {
+      // Get students who have the selected subject assigned
+      const currentYear = new Date().getFullYear().toString();
+      const { data: assignedStudentIds } = await supabase
+        .from('student_subjects')
+        .select('student_id')
+        .eq('subject_id', selectedSubject)
+        .eq('academic_year', currentYear);
+      
+      const assignedIds = new Set(assignedStudentIds?.map(a => a.student_id) || []);
+      
+      if (assignedIds.size > 0) {
+        // Only show students with the subject assigned
+        const filteredStudents = allStudents?.filter(s => assignedIds.has(s.id)) || [];
+        setStudents(filteredStudents);
+      } else {
+        // If no assignments found, fall back to all students (for backward compatibility)
+        setStudents(allStudents || []);
+      }
+    }
+    
     setMarks({});
     setComments({});
     setLoading(false);
@@ -849,7 +875,13 @@ By continuing to use the EduTrack Staff Terminal, you acknowledge your responsib
                     <select 
                       className="input-field appearance-none"
                       value={selectedSubject}
-                      onChange={(e) => setSelectedSubject(e.target.value)}
+                      onChange={(e) => {
+                        setSelectedSubject(e.target.value);
+                        // Re-fetch students when subject changes
+                        if (selectedClass) {
+                          fetchStudentsForMarks(selectedClass);
+                        }
+                      }}
                     >
                       <option value="">Choose Subject</option>
                       {subjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}

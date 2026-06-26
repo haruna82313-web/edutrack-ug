@@ -1,13 +1,14 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
-import { UserPlus, Loader2, Users, Phone, GraduationCap, Search, Archive, CheckCircle } from 'lucide-react';
+import { UserPlus, Loader2, Users, Phone, GraduationCap, Search, Archive, CheckCircle, BookOpen } from 'lucide-react';
 import EditModal from '../../components/admin/EditModal';
 import RowActions from '../../components/admin/RowActions';
 import { deleteStudentCascade } from '../../lib/adminCrud';
 import SelectField from '../../components/admin/SelectField';
 import { ShieldCheck, Star } from 'lucide-react';
 import StudentDetailsModal from '../../components/admin/StudentDetailsModal';
+import { StudentSubjectsModal } from '../../components/admin/StudentSubjectsModal';
 
 import { useNotification } from '../../context/NotificationContext';
 
@@ -49,6 +50,9 @@ const Students = () => {
   const [archiving, setArchiving] = useState(null);
   const [archiveReason, setArchiveReason] = useState('');
   const [archiveStatus, setArchiveStatus] = useState('inactive');
+  const [showSubjectsModal, setShowSubjectsModal] = useState(false);
+  const [selectedStudentForSubjects, setSelectedStudentForSubjects] = useState(null);
+  const [schoolId, setSchoolId] = useState(null);
   
   const [formData, setFormData] = useState({
     fullName: '',
@@ -73,10 +77,11 @@ const Students = () => {
         .eq('id', user.id)
         .single();
 
-      const schoolId = profile?.school_id;
+      const currentSchoolId = profile?.school_id;
+      setSchoolId(currentSchoolId);
       const classQuery = supabase.from('classes').select('*').order('name');
-      const { data: classData, error: classErr } = schoolId
-        ? await classQuery.eq('school_id', schoolId)
+      const { data: classData, error: classErr } = currentSchoolId
+        ? await classQuery.eq('school_id', currentSchoolId)
         : await classQuery;
       if (classErr) throw classErr;
       setClasses(classData || []);
@@ -484,27 +489,40 @@ const Students = () => {
                         </a>
                       </td>
                       <td className="px-8 py-6 text-right">
-                        {(student.status || 'active') === 'active' ? (
-                          <RowActions
-                            onEdit={() => setEditing({ ...student, class_id: student.class_id })}
-                            onDelete={() => {
-                              setArchiving(student);
-                              setArchiveReason('');
-                              setArchiveStatus('inactive');
-                            }}
-                            customDeleteIcon={Archive}
-                            customDeleteLabel="Archive"
-                          />
-                        ) : (
-                          <div className="flex items-center justify-end gap-3">
+                        <div className="flex items-center justify-end gap-2">
+                          {(student.status || 'active') === 'active' && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedStudentForSubjects(student);
+                                setShowSubjectsModal(true);
+                              }}
+                              className="p-3 text-slate-600 hover:text-violet-400 hover:bg-violet-500/10 rounded-xl transition-all"
+                              title="Manage Subjects"
+                            >
+                              <BookOpen size={18} />
+                            </button>
+                          )}
+                          {(student.status || 'active') === 'active' ? (
+                            <RowActions
+                              onEdit={() => setEditing({ ...student, class_id: student.class_id })}
+                              onDelete={() => {
+                                setArchiving(student);
+                                setArchiveReason('');
+                                setArchiveStatus('inactive');
+                              }}
+                              customDeleteIcon={Archive}
+                              customDeleteLabel="Archive"
+                            />
+                          ) : (
                             <button
                               onClick={(e) => { e.stopPropagation(); reactivateStudent(student); }}
                               className="flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-500/10 text-emerald-400 text-[10px] font-black uppercase tracking-widest hover:bg-emerald-500/20 border border-emerald-500/20 transition-all"
                             >
                               <CheckCircle size={12} /> Reactivate
                             </button>
-                          </div>
-                        )}
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -554,25 +572,40 @@ const Students = () => {
                         </div>
                       </div>
                     </div>
-                    {(student.status || 'active') === 'active' ? (
-                      <RowActions
-                        onEdit={() => setEditing({ ...student, class_id: student.class_id })}
-                        onDelete={() => {
-                          setArchiving(student);
-                          setArchiveReason('');
-                          setArchiveStatus('inactive');
-                        }}
-                        customDeleteIcon={Archive}
-                        customDeleteLabel="Archive"
-                      />
-                    ) : (
-                      <button
-                        onClick={(e) => { e.stopPropagation(); reactivateStudent(student); }}
-                        className="flex items-center gap-1.5 px-2.5 py-2 rounded-xl bg-emerald-500/10 text-emerald-400 text-[9px] font-black uppercase tracking-widest hover:bg-emerald-500/20 border border-emerald-500/20 transition-all"
-                      >
-                        <CheckCircle size={10} /> Reactivate
-                      </button>
-                    )}
+                    <div className="flex items-center gap-1">
+                      {(student.status || 'active') === 'active' && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedStudentForSubjects(student);
+                            setShowSubjectsModal(true);
+                          }}
+                          className="p-2 text-slate-600 hover:text-violet-400 hover:bg-violet-500/10 rounded-xl transition-all"
+                          title="Manage Subjects"
+                        >
+                          <BookOpen size={16} />
+                        </button>
+                      )}
+                      {(student.status || 'active') === 'active' ? (
+                        <RowActions
+                          onEdit={() => setEditing({ ...student, class_id: student.class_id })}
+                          onDelete={() => {
+                            setArchiving(student);
+                            setArchiveReason('');
+                            setArchiveStatus('inactive');
+                          }}
+                          customDeleteIcon={Archive}
+                          customDeleteLabel="Archive"
+                        />
+                      ) : (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); reactivateStudent(student); }}
+                          className="flex items-center gap-1.5 px-2.5 py-2 rounded-xl bg-emerald-500/10 text-emerald-400 text-[9px] font-black uppercase tracking-widest hover:bg-emerald-500/20 border border-emerald-500/20 transition-all"
+                        >
+                          <CheckCircle size={10} /> Reactivate
+                        </button>
+                      )}
+                    </div>
                   </div>
                   
                   <div className="flex items-center justify-between pt-3 border-t border-slate-800/50">
@@ -737,6 +770,16 @@ const Students = () => {
         student={selectedStudent} 
         open={showDetails} 
         onClose={() => setShowDetails(false)} 
+      />
+      
+      <StudentSubjectsModal
+        student={selectedStudentForSubjects}
+        isOpen={showSubjectsModal}
+        onClose={() => {
+          setShowSubjectsModal(false);
+          setSelectedStudentForSubjects(null);
+        }}
+        schoolId={schoolId}
       />
     </div>
   );
