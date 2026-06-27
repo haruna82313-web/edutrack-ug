@@ -10,7 +10,7 @@ import {
 import PolicyViewerModal from '../../components/parent/PolicyViewerModal';
 import CircularViewerModal from '../../components/parent/CircularViewerModal';
 import PerformanceChart from '../../components/parent/PerformanceChart';
-import { subscribeUserToPush } from '../../lib/pushNotifications';
+import { PushNotificationToggle } from '../../components/PushNotificationToggle';
 import { useNotification } from '../../context/NotificationContext';
 
 const ParentDashboard = () => {
@@ -469,6 +469,7 @@ const ParentDashboard = () => {
             <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest mt-1">{profile.schools?.name}</p>
           </div>
         </div>
+        <PushNotificationToggle />
         <button 
           onClick={() => setIsSidebarOpen(true)}
           className="w-10 h-10 flex items-center justify-center bg-white/5 rounded-xl border border-white/10"
@@ -480,37 +481,6 @@ const ParentDashboard = () => {
       <main className="p-6 space-y-8 relative z-10 max-w-lg mx-auto pb-24">
         {activeView === 'home' ? (
           <>
-            {/* The Pulse: Push Notification Onboarding */}
-            {pushStatus !== 'active' && pushStatus !== 'denied' && (
-              <div className="bg-gradient-to-br from-primary-600/20 to-violet-600/20 border border-primary-500/30 rounded-[2rem] p-6 relative overflow-hidden">
-                <div className="absolute top-0 right-0 w-32 h-32 bg-primary-500/10 rounded-full blur-3xl -mr-16 -mt-16 animate-pulse"></div>
-                <div className="relative z-10 flex items-center gap-4">
-                  <div className="w-14 h-14 bg-primary-500 rounded-2xl flex items-center justify-center shadow-glow shrink-0">
-                    <Bell className="text-white animate-bounce" size={24} />
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="text-sm font-black uppercase tracking-widest leading-none">Activate The Pulse</h3>
-                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mt-2 leading-relaxed">
-                      Receive real-time alerts for attendance, scores & circulars.
-                    </p>
-                    <button 
-                      onClick={handleEnablePush}
-                      disabled={pushStatus === 'loading'}
-                      className="mt-4 bg-white text-slate-950 px-6 py-2.5 rounded-xl font-black text-[9px] uppercase tracking-widest hover:scale-[1.05] transition-all disabled:opacity-50"
-                    >
-                      {pushStatus === 'loading' ? 'Activating Node...' : 'Enable Notifications'}
-                    </button>
-                  </div>
-                  <button 
-                    onClick={() => setPushStatus('denied')}
-                    className="text-slate-500 hover:text-white transition-colors"
-                  >
-                    <X size={16} />
-                  </button>
-                </div>
-              </div>
-            )}
-
             {/* Child Selector (If multiple children) */}
             {students.length > 1 && (
               <div className="flex gap-3 overflow-x-auto no-scrollbar py-2 -mx-2 px-2 scroll-smooth">

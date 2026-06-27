@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 
 import { useNotification } from '../../context/NotificationContext';
+import { PushNotificationToggle } from '../../components/PushNotificationToggle';
 import {
   calculateOLevelTotal,
   getOLevelGrade,
@@ -674,6 +675,7 @@ By continuing to use the EduTrack Staff Terminal, you acknowledge your responsib
               <CloudUpload size={12} /> {queueLength} Pending Sync
             </div>
           )}
+          <PushNotificationToggle />
           <button onClick={handleLogout} className="p-2.5 lg:p-3 bg-slate-800 text-slate-400 rounded-xl lg:rounded-2xl hover:bg-rose-500/10 hover:text-rose-400 transition-all shrink-0">
             <LogOut size={18} />
           </button>
