@@ -20,7 +20,7 @@ export const calculateWeightedPaperScore = (paperScores) => {
   });
 
   // Normalize to 100 if weights don't sum perfectly (for safety)
-  return totalWeight > 0 ? (totalWeightedScore / totalWeight) * 100 : 0;
+  return totalWeight > 0 ? Math.round((totalWeightedScore / totalWeight) * 100) : 0;
 };
 
 /**

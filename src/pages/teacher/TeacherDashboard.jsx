@@ -39,6 +39,9 @@ const TeacherDashboard = () => {
   const [selectedHistorySubject, setSelectedHistorySubject] = useState('');
   const [selectedHistoryYear, setSelectedHistoryYear] = useState(new Date().getFullYear().toString());
   const [selectedHistoryTerm, setSelectedHistoryTerm] = useState('Term 1');
+  const [historyLevelSelector, setHistoryLevelSelector] = useState('O'); // 'O' or 'A'
+  const [historyPaperConfigs, setHistoryPaperConfigs] = useState([]);
+  const [selectedHistoryPaperConfig, setSelectedHistoryPaperConfig] = useState(null);
   const [syllabusTopics, setSyllabusTopics] = useState([]);
   const [activeLesson, setActiveLesson] = useState(null);
   const [students, setStudents] = useState([]);
@@ -67,6 +70,9 @@ const TeacherDashboard = () => {
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear().toString());
   const [classes, setClasses] = useState([]);
   const [subjects, setSubjects] = useState([]);
+  const [paperConfigs, setPaperConfigs] = useState([]);
+  const [selectedPaperConfig, setSelectedPaperConfig] = useState(null);
+  const [manualLevelSelector, setManualLevelSelector] = useState('O'); // 'O' or 'A'
   const [marks, setMarks] = useState({}); // { studentId: score }
   const [comments, setComments] = useState({}); // { studentId: commentKey }
   const [submittingMarks, setSubmittingMarks] = useState(false);
@@ -197,6 +203,10 @@ By continuing to use the EduTrack Staff Terminal, you acknowledge your responsib
         query = query.gte('created_at', `${date}T00:00:00`)
                      .lte('created_at', `${date}T23:59:59`);
       }
+      
+      if (selectedHistoryPaperConfig && selectedHistoryPaperConfig.id) {
+        query = query.eq('subject_paper_config_id', selectedHistoryPaperConfig.id);
+      }
 
       const { data, error } = await query.order('created_at', { ascending: false });
       if (error) throw error;
@@ -208,13 +218,21 @@ By continuing to use the EduTrack Staff Terminal, you acknowledge your responsib
     }
   };
 
+  // UseEffect 1: Fetch marks/attendance history
   useEffect(() => {
     if (activeTab === 'attendance_history' && selectedClass) {
       fetchAttendanceHistory(selectedClass, filterDate, selectedHistorySubject);
     } else if (activeTab === 'marks_history' && selectedClass && selectedSubject) {
       fetchMarksHistory(selectedClass, selectedSubject, filterDate, selectedHistoryYear, selectedHistoryTerm);
     }
-  }, [activeTab, selectedClass, selectedSubject, selectedHistorySubject, filterDate, selectedHistoryYear, selectedHistoryTerm]);
+  }, [activeTab, selectedClass, selectedSubject, selectedHistorySubject, filterDate, selectedHistoryYear, selectedHistoryTerm, selectedHistoryPaperConfig]);
+
+  // UseEffect 2: Fetch history paper configs
+  useEffect(() => {
+    if (activeTab === 'marks_history' && selectedSubject) {
+      fetchHistoryPaperConfigs(selectedSubject);
+    }
+  }, [activeTab, selectedSubject, historyLevelSelector]);
 
   useEffect(() => {
     let subChannel;
@@ -343,6 +361,79 @@ By continuing to use the EduTrack Staff Terminal, you acknowledge your responsib
     }
   };
 
+  const fetchPaperConfigs = async (subjectId) => {
+    if (!subjectId) {
+      setPaperConfigs([]);
+      setSelectedPaperConfig(null);
+      return;
+    }
+    try {
+      const { data: prof } = await supabase.from('users').select('school_id').eq('id', user.id).single();
+      const { data: paperConfigsData } = await supabase
+        .from('subject_paper_configs')
+        .select('*')
+        .eq('subject_id', subjectId)
+        .eq('school_id', prof.school_id)
+        .eq('level', manualLevelSelector)
+        .order('paper_name');
+
+      setPaperConfigs(paperConfigsData || []);
+      if (paperConfigsData && paperConfigsData.length > 0) {
+        setSelectedPaperConfig(paperConfigsData[0]); // Auto-select first paper
+      } else {
+        setSelectedPaperConfig(null);
+      }
+    } catch (err) {
+      console.error(err);
+      setPaperConfigs([]);
+      setSelectedPaperConfig(null);
+    }
+  };
+
+  const fetchHistoryPaperConfigs = async (subjectId) => {
+    if (!subjectId) {
+      setHistoryPaperConfigs([]);
+      setSelectedHistoryPaperConfig(null);
+      return;
+    }
+    try {
+      const { data: prof } = await supabase.from('users').select('school_id').eq('id', user.id).single();
+      const { data: paperConfigsData } = await supabase
+        .from('subject_paper_configs')
+        .select('*')
+        .eq('subject_id', subjectId)
+        .eq('school_id', prof.school_id)
+        .eq('level', historyLevelSelector)
+        .order('paper_name');
+
+      // Update configs only if they are different
+      setHistoryPaperConfigs(prev => {
+        const prevIds = prev.map(p => p.id).sort().join(',');
+        const newIds = (paperConfigsData || []).map(p => p.id).sort().join(',');
+        if (prevIds === newIds) {
+          return prev;
+        }
+        return paperConfigsData || [];
+      });
+      
+      // Only update selected paper if necessary
+      setSelectedHistoryPaperConfig(prev => {
+        if (paperConfigsData && paperConfigsData.length > 0) {
+          // Check if the current selected config is still in the new list
+          if (prev && paperConfigsData.some(p => p.id === prev.id)) {
+            return prev; // Keep current selection
+          }
+          return paperConfigsData[0]; // Otherwise select first
+        }
+        return null; // No configs available
+      });
+    } catch (err) {
+      console.error(err);
+      setHistoryPaperConfigs([]);
+      setSelectedHistoryPaperConfig(null);
+    }
+  };
+
   const fetchStudentsForMarks = async (classId) => {
     if (!classId) return;
     setLoading(true);
@@ -405,13 +496,14 @@ By continuing to use the EduTrack Staff Terminal, you acknowledge your responsib
             teacher_id: user.id,
             class_id: selectedClass, // NEW: Save the class this mark was recorded in!
             marks: parseFloat(score),
-            max_marks: 100,
+            max_marks: selectedPaperConfig?.max_possible_raw_mark || 100,
             school_id: profile.school_id,
             year: parseInt(selectedYear),
             term: selectedTerm,
             comments: commentText,
             is_published: true,
-            assessment_type: selectedAssessmentType // NEW: Assessment type
+            assessment_type: selectedAssessmentType, // NEW: Assessment type
+            subject_paper_config_id: selectedPaperConfig?.id || null // NEW: Paper config
           };
         });
 
@@ -891,8 +983,12 @@ By continuing to use the EduTrack Staff Terminal, you acknowledge your responsib
                       className="input-field appearance-none"
                       value={selectedClass}
                       onChange={(e) => {
-                        setSelectedClass(e.target.value);
-                        fetchStudentsForMarks(e.target.value);
+                        const newClassId = e.target.value;
+                        setSelectedClass(newClassId);
+                        fetchStudentsForMarks(newClassId);
+                        if (selectedSubject) {
+                          fetchPaperConfigs(selectedSubject, newClassId);
+                        }
                       }}
                     >
                       <option value="">Choose Class</option>
@@ -905,10 +1001,17 @@ By continuing to use the EduTrack Staff Terminal, you acknowledge your responsib
                       className="input-field appearance-none"
                       value={selectedSubject}
                       onChange={(e) => {
-                        setSelectedSubject(e.target.value);
+                        const newSubjectId = e.target.value;
+                        setSelectedSubject(newSubjectId);
                         // Re-fetch students when subject changes
                         if (selectedClass) {
                           fetchStudentsForMarks(selectedClass);
+                        }
+                        if (newSubjectId) {
+                          fetchPaperConfigs(newSubjectId);
+                        } else {
+                          setPaperConfigs([]);
+                          setSelectedPaperConfig(null);
                         }
                       }}
                     >
@@ -916,6 +1019,64 @@ By continuing to use the EduTrack Staff Terminal, you acknowledge your responsib
                       {subjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                     </select>
                   </div>
+                  {/* Manual Level Selector - Only show for secondary schools */}
+                  {profile?.schools?.type !== 'primary' && (
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Level Mode</label>
+                      <div className="flex gap-2 p-1 bg-slate-800 rounded-xl">
+                        <button
+                          onClick={() => {
+                            setManualLevelSelector('O');
+                            if (selectedSubject) {
+                              fetchPaperConfigs(selectedSubject);
+                            }
+                          }}
+                          className={`flex-1 py-2 px-3 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${
+                            manualLevelSelector === 'O'
+                              ? 'bg-emerald-600 text-white shadow-glow'
+                              : 'bg-transparent text-slate-400 hover:bg-slate-700'
+                          }`}
+                        >
+                          O-Level
+                        </button>
+                        <button
+                          onClick={() => {
+                            setManualLevelSelector('A');
+                            if (selectedSubject) {
+                              fetchPaperConfigs(selectedSubject);
+                            }
+                          }}
+                          className={`flex-1 py-2 px-3 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${
+                            manualLevelSelector === 'A'
+                              ? 'bg-blue-600 text-white shadow-glow'
+                              : 'bg-transparent text-slate-400 hover:bg-slate-700'
+                          }`}
+                        >
+                          A-Level
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  {/* Paper Selector - Only show for secondary schools */}
+                  {profile?.schools?.type !== 'primary' && paperConfigs.length > 0 && (
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Select Paper</label>
+                      <select 
+                        className="input-field appearance-none"
+                        value={selectedPaperConfig?.id || ''}
+                        onChange={(e) => {
+                          const config = paperConfigs.find(p => p.id === e.target.value);
+                          setSelectedPaperConfig(config);
+                        }}
+                      >
+                        {paperConfigs.map(p => (
+                          <option key={p.id} value={p.id}>
+                            {p.paper_name} • Max: {p.max_possible_raw_mark} • Weight: {p.paper_weight_percentage}%
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
                   <div className="space-y-2">
                     <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Year</label>
                     <select 
@@ -1219,6 +1380,53 @@ By continuing to use the EduTrack Staff Terminal, you acknowledge your responsib
                     onChange={(e) => setFilterDate(e.target.value)}
                     className="bg-slate-950 border border-white/10 rounded-xl px-4 py-2 text-[10px] font-black uppercase tracking-widest text-white outline-none focus:border-amber-500/50 transition-all [color-scheme:dark]"
                   />
+                  {profile?.schools?.type !== 'primary' && (
+                    <div className="space-y-2">
+                      <label className="text-[8px] font-black text-slate-500 uppercase tracking-widest ml-1">Level Mode</label>
+                      <div className="flex gap-2 p-1 bg-slate-800 rounded-xl">
+                        <button
+                          onClick={() => {
+                            setHistoryLevelSelector('O');
+                          }}
+                          className={`flex-1 py-2 px-3 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${
+                            historyLevelSelector === 'O'
+                              ? 'bg-emerald-600 text-white shadow-glow'
+                              : 'bg-transparent text-slate-400 hover:bg-slate-700'
+                          }`}
+                        >
+                          O-Level
+                        </button>
+                        <button
+                          onClick={() => {
+                            setHistoryLevelSelector('A');
+                          }}
+                          className={`flex-1 py-2 px-3 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${
+                            historyLevelSelector === 'A'
+                              ? 'bg-blue-600 text-white shadow-glow'
+                              : 'bg-transparent text-slate-400 hover:bg-slate-700'
+                          }`}
+                        >
+                          A-Level
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  {profile?.schools?.type !== 'primary' && historyPaperConfigs.length > 0 && (
+                    <div className="space-y-2">
+                      <label className="text-[8px] font-black text-slate-500 uppercase tracking-widest ml-1">Select Paper</label>
+                      <select 
+                        className="bg-slate-950 border border-white/10 rounded-xl px-4 py-2 text-[10px] font-black uppercase tracking-widest text-white outline-none focus:border-amber-500/50 transition-all"
+                        value={selectedHistoryPaperConfig?.id || ''}
+                        onChange={(e) => {
+                          const config = historyPaperConfigs.find(p => p.id === e.target.value);
+                          setSelectedHistoryPaperConfig(config);
+                        }}
+                      >
+                        <option value="">All Papers</option>
+                        {historyPaperConfigs.map(p => <option key={p.id} value={p.id}>{p.paper_name} ({p.paper_weight_percentage}%)</option>)}
+                      </select>
+                    </div>
+                  )}
                 </div>
               </div>
 

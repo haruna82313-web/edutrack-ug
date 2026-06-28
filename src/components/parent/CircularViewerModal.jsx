@@ -13,7 +13,8 @@ import {
   calculatePrimaryAggregatesAndDivision, 
   getPrimaryGradeAggregate,
   getALevelPrincipalGradeAndPoints,
-  getALevelSubsidiaryGradeAndPoints
+  getALevelSubsidiaryGradeAndPoints,
+  calculateWeightedPaperScore
 } from '../../utils/uneb-engine';
 
 const CircularViewerModal = ({ isOpen, onClose, doc }) => {
@@ -119,15 +120,31 @@ const CircularViewerModal = ({ isOpen, onClose, doc }) => {
       const tableHeaders = isPrimary
         ? [['SUBJECT', 'SCORE', 'OUT OF', 'GRADE', 'AGGREGATE', 'REMARK']]
         : (isALevel 
-          ? [['SUBJECT', 'SCORE', 'OUT OF', 'GRADE', 'POINTS', 'REMARK']] 
+          ? [['SUBJECT', 'SUBJECT PAPERS', 'FINAL SCORE', 'GRADE', 'POINTS', 'REMARK']] 
           : [['SUBJECT', 'SCORE', 'OUT OF', 'GRADE', 'REMARK']]);
 
-      const tableRows = (reportData.marks || []).map((m) => {
+      const tableRows = [];
+      
+      (reportData.marks || []).forEach((m) => {
+        // Calculate weighted score if we have paper marks
+        let finalScore = m.marks;
+        let finalMaxMarks = m.max_marks;
+        
+        if (isALevel && m.paper_marks && m.paper_marks.length > 0) {
+          const paperScores = m.paper_marks.map(paperMark => ({
+            received_raw_mark: paperMark.marks,
+            max_possible_raw_mark: paperMark.subject_paper_configs?.max_possible_raw_mark || 100,
+            paper_weight_percentage: paperMark.subject_paper_configs?.paper_weight_percentage || 33.33
+          }));
+          finalScore = calculateWeightedPaperScore(paperScores);
+          finalMaxMarks = 100;
+        }
+        
         let gradeInfo;
         if (m.grade) {
           gradeInfo = { grade: m.grade, points: m.points };
         } else if (isPrimary) {
-          gradeInfo = getPrimaryGrade(m.marks, gradingConfigs, m.max_marks);
+          gradeInfo = getPrimaryGrade(finalScore, gradingConfigs, finalMaxMarks);
         } else if (isALevel) {
           const subjectName = m.subjects?.name || '';
           const isSubsidiary = subjectName.toUpperCase().includes('ICT') || 
@@ -137,27 +154,48 @@ const CircularViewerModal = ({ isOpen, onClose, doc }) => {
                                subjectName.toUpperCase().includes('SUB-MATHS') ||
                                subjectName.toUpperCase().includes('SUBMATHS');
           gradeInfo = isSubsidiary 
-            ? getALevelSubsidiaryGradeAndPoints(m.marks, m.max_marks)
-            : getALevelPrincipalGradeAndPoints(m.marks, m.max_marks);
+            ? getALevelSubsidiaryGradeAndPoints(finalScore, finalMaxMarks)
+            : getALevelPrincipalGradeAndPoints(finalScore, finalMaxMarks);
         } else {
-          gradeInfo = getOLevelGrade(m.marks, m.max_marks);
+          gradeInfo = getOLevelGrade(finalScore, finalMaxMarks);
         }
 
-        const row = [
-          m.subjects?.name || 'Unknown',
-          m.marks || '-',
-          m.max_marks || '-',
-          gradeInfo.grade
-        ];
+        if (isALevel) {
+          let papersColumnContent = '';
+          if (m.paper_marks && m.paper_marks.length > 0) {
+            papersColumnContent = m.paper_marks.map(paperMark => {
+              const paperName = paperMark.subject_paper_configs?.paper_name || 'Paper';
+              const paperWeight = paperMark.subject_paper_configs?.paper_weight_percentage || 33.33;
+              const paperMaxMarks = paperMark.subject_paper_configs?.max_possible_raw_mark || 100;
+              return `${paperName} (${paperWeight}%): ${paperMark.marks}/${paperMaxMarks}`;
+            }).join('\n');
+          }
+          
+          const row = [
+            m.subjects?.name || 'Unknown',
+            papersColumnContent,
+            Math.round(finalScore),
+            gradeInfo.grade,
+            gradeInfo.points,
+            m.comments || ''
+          ];
+          
+          tableRows.push(row);
+        } else {
+          const row = [
+            m.subjects?.name || 'Unknown',
+            Math.round(finalScore),
+            finalMaxMarks,
+            gradeInfo.grade
+          ];
 
-        if (isPrimary) {
-          row.push(getPrimaryGradeAggregate(gradeInfo.grade));
-        } else if (isALevel) {
-          row.push(gradeInfo.points);
+          if (isPrimary) {
+            row.push(getPrimaryGradeAggregate(gradeInfo.grade));
+          }
+
+          row.push(m.comments || '');
+          tableRows.push(row);
         }
-
-        row.push(m.comments || '');
-        return row;
       });
 
       const accentColorLight = isPrimary ? [254, 226, 226] : (isALevel ? [220, 230, 245] : [230, 245, 230]);
@@ -178,7 +216,22 @@ const CircularViewerModal = ({ isOpen, onClose, doc }) => {
 
       // Summary Stats
       const safeMarksData = reportData.marks || [];
-      const totalMarks = safeMarksData.reduce((sum, m) => sum + (parseFloat(m.marks) || 0), 0);
+      
+      // Calculate final scores (including weighted for A-Level)
+      const finalScores = safeMarksData.map(m => {
+        let finalScore = m.marks;
+        if (isALevel && m.paper_marks && m.paper_marks.length > 0) {
+          const paperScores = m.paper_marks.map(paperMark => ({
+            received_raw_mark: paperMark.marks,
+            max_possible_raw_mark: paperMark.subject_paper_configs?.max_possible_raw_mark || 100,
+            paper_weight_percentage: paperMark.subject_paper_configs?.paper_weight_percentage || 33.33
+          }));
+          finalScore = calculateWeightedPaperScore(paperScores);
+        }
+        return finalScore;
+      });
+      
+      const totalMarks = finalScores.reduce((sum, score) => sum + (parseFloat(score) || 0), 0);
       const avgScore = safeMarksData.length > 0 ? (totalMarks / safeMarksData.length).toFixed(2) : '0.00';
 
       let stats;
@@ -194,7 +247,7 @@ const CircularViewerModal = ({ isOpen, onClose, doc }) => {
         ];
       } else if (isALevel) {
         let totalPoints = 0;
-        safeMarksData.forEach(m => {
+        safeMarksData.forEach((m, index) => {
           let gradeInfo;
           const subjectName = m.subjects?.name || '';
           const isSubsidiary = subjectName.toUpperCase().includes('ICT') || 
@@ -204,12 +257,14 @@ const CircularViewerModal = ({ isOpen, onClose, doc }) => {
                                subjectName.toUpperCase().includes('SUB-MATHS') ||
                                subjectName.toUpperCase().includes('SUBMATHS');
           
+          const finalScore = finalScores[index];
+          
           if (m.grade && m.points !== undefined) {
             gradeInfo = { points: m.points };
           } else if (isSubsidiary) {
-            gradeInfo = getALevelSubsidiaryGradeAndPoints(m.marks, m.max_marks);
+            gradeInfo = getALevelSubsidiaryGradeAndPoints(finalScore, 100);
           } else {
-            gradeInfo = getALevelPrincipalGradeAndPoints(m.marks, m.max_marks);
+            gradeInfo = getALevelPrincipalGradeAndPoints(finalScore, 100);
           }
           totalPoints += gradeInfo.points || 0;
         });
@@ -688,11 +743,42 @@ const CircularViewerModal = ({ isOpen, onClose, doc }) => {
                         <table className="w-full text-left border-collapse">
                           <thead>
                             <tr className="border-b border-slate-800 bg-slate-950">
-                              <th className="py-2.5 px-3 text-[8px] font-black text-slate-500 uppercase tracking-widest">Subject</th>
-                              <th className="py-2.5 px-3 text-[8px] font-black text-slate-500 uppercase tracking-widest text-center">Marks</th>
-                              <th className="py-2.5 px-3 text-[8px] font-black text-slate-500 uppercase tracking-widest text-center">Max</th>
-                              <th className="py-2.5 px-3 text-[8px] font-black text-slate-500 uppercase tracking-widest text-center">Grade</th>
-                              <th className="py-2.5 px-3 text-[8px] font-black text-slate-500 uppercase tracking-widest">Comment</th>
+                              {(() => {
+                                const isPrimary = reportData.student?.schools?.type === 'primary';
+                                const isALevel = !isPrimary && (reportData.class_name?.toLowerCase().includes('a'));
+                                if (isPrimary) {
+                                  return (
+                                    <>
+                                      <th className="py-2.5 px-3 text-[8px] font-black text-slate-500 uppercase tracking-widest">Subject</th>
+                                      <th className="py-2.5 px-3 text-[8px] font-black text-slate-500 uppercase tracking-widest text-center">Marks</th>
+                                      <th className="py-2.5 px-3 text-[8px] font-black text-slate-500 uppercase tracking-widest text-center">Max</th>
+                                      <th className="py-2.5 px-3 text-[8px] font-black text-slate-500 uppercase tracking-widest text-center">Grade</th>
+                                      <th className="py-2.5 px-3 text-[8px] font-black text-slate-500 uppercase tracking-widest">Comment</th>
+                                    </>
+                                  );
+                                } else if (isALevel) {
+                                  return (
+                                    <>
+                                      <th className="py-2.5 px-3 text-[8px] font-black text-slate-500 uppercase tracking-widest">Subject</th>
+                                      <th className="py-2.5 px-3 text-[8px] font-black text-slate-500 uppercase tracking-widest">Subject Papers</th>
+                                      <th className="py-2.5 px-3 text-[8px] font-black text-slate-500 uppercase tracking-widest text-center">Final Score</th>
+                                      <th className="py-2.5 px-3 text-[8px] font-black text-slate-500 uppercase tracking-widest text-center">Grade</th>
+                                      <th className="py-2.5 px-3 text-[8px] font-black text-slate-500 uppercase tracking-widest text-center">Points</th>
+                                      <th className="py-2.5 px-3 text-[8px] font-black text-slate-500 uppercase tracking-widest">Comment</th>
+                                    </>
+                                  );
+                                } else {
+                                  return (
+                                    <>
+                                      <th className="py-2.5 px-3 text-[8px] font-black text-slate-500 uppercase tracking-widest">Subject</th>
+                                      <th className="py-2.5 px-3 text-[8px] font-black text-slate-500 uppercase tracking-widest text-center">Marks</th>
+                                      <th className="py-2.5 px-3 text-[8px] font-black text-slate-500 uppercase tracking-widest text-center">Max</th>
+                                      <th className="py-2.5 px-3 text-[8px] font-black text-slate-500 uppercase tracking-widest text-center">Grade</th>
+                                      <th className="py-2.5 px-3 text-[8px] font-black text-slate-500 uppercase tracking-widest">Comment</th>
+                                    </>
+                                  );
+                                }
+                              })()}
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-800">
@@ -701,11 +787,24 @@ const CircularViewerModal = ({ isOpen, onClose, doc }) => {
                               const isPrimary = reportData.student?.schools?.type === 'primary';
                               const isALevel = !isPrimary && (reportData.class_name?.toLowerCase().includes('a'));
                               
+                              // Calculate weighted score if we have paper marks
+                              let finalScore = m.marks;
+                              let finalMaxMarks = m.max_marks;
+                              if (isALevel && m.paper_marks && m.paper_marks.length > 0) {
+                                const paperScores = m.paper_marks.map(paperMark => ({
+                                  received_raw_mark: paperMark.marks,
+                                  max_possible_raw_mark: paperMark.subject_paper_configs?.max_possible_raw_mark || 100,
+                                  paper_weight_percentage: paperMark.subject_paper_configs?.paper_weight_percentage || 33.33
+                                }));
+                                finalScore = calculateWeightedPaperScore(paperScores);
+                                finalMaxMarks = 100;
+                              }
+                              
                               let gradeInfo;
                               if (m.grade) {
                                 gradeInfo = { grade: m.grade, points: m.points };
                               } else if (isPrimary) {
-                                gradeInfo = getPrimaryGrade(m.marks, gradingConfigs, m.max_marks);
+                                gradeInfo = getPrimaryGrade(finalScore, gradingConfigs, finalMaxMarks);
                               } else if (isALevel) {
                                 const subjectName = m.subjects?.name || '';
                                 const isSubsidiary = subjectName.toUpperCase().includes('ICT') || 
@@ -715,10 +814,10 @@ const CircularViewerModal = ({ isOpen, onClose, doc }) => {
                                                      subjectName.toUpperCase().includes('SUB-MATHS') ||
                                                      subjectName.toUpperCase().includes('SUBMATHS');
                                 gradeInfo = isSubsidiary 
-                                  ? getALevelSubsidiaryGradeAndPoints(m.marks, m.max_marks)
-                                  : getALevelPrincipalGradeAndPoints(m.marks, m.max_marks);
+                                  ? getALevelSubsidiaryGradeAndPoints(finalScore, finalMaxMarks)
+                                  : getALevelPrincipalGradeAndPoints(finalScore, finalMaxMarks);
                               } else {
-                                gradeInfo = getOLevelGrade(m.marks, m.max_marks);
+                                gradeInfo = getOLevelGrade(finalScore, finalMaxMarks);
                               }
                               
                               const getGradeColor = () => {
@@ -738,17 +837,49 @@ const CircularViewerModal = ({ isOpen, onClose, doc }) => {
                                   }
                                 }
                               };
+                              
+                              // Build subject papers column content for A-Level
+                              let papersColumnContent = null;
+                              if (isALevel && m.paper_marks && m.paper_marks.length > 0) {
+                                papersColumnContent = (
+                                  <div className="space-y-1">
+                                    {m.paper_marks.map((paper, paperIdx) => (
+                                      <div key={paperIdx} className="text-[10px] text-slate-400">
+                                        {paper.subject_paper_configs?.paper_name || 'Paper'} ({paper.subject_paper_configs?.paper_weight_percentage || 33.33}%): {paper.marks}/{paper.subject_paper_configs?.max_possible_raw_mark || 100}
+                                      </div>
+                                    ))}
+                                  </div>
+                                );
+                              }
+                              
                               return (
                                 <tr key={idx} className="hover:bg-white/5">
                                   <td className="py-3 px-3 font-bold text-slate-200 text-[12px]">{m.subjects?.name || 'Unknown'}</td>
-                                  <td className="py-3 px-3 text-center font-black text-lg text-aurora-cyan">{m.marks}</td>
-                                  <td className="py-3 px-3 text-center text-slate-500 font-bold">{m.max_marks}</td>
-                                  <td className="py-3 px-3 text-center">
-                                    <span className={`inline-block px-2.5 py-1 rounded-full text-[7px] font-black uppercase tracking-widest ${getGradeColor()}`}>
-                                      {gradeInfo.grade}
-                                    </span>
-                                  </td>
-                                  <td className="py-3 px-3 text-[9px] text-slate-400">{m.comments || ''}</td>
+                                  
+                                  {isALevel ? (
+                                    <>
+                                      <td className="py-3 px-3">{papersColumnContent}</td>
+                                      <td className="py-3 px-3 text-center font-black text-lg text-aurora-cyan">{Math.round(finalScore)}</td>
+                                      <td className="py-3 px-3 text-center">
+                                        <span className={`inline-block px-2.5 py-1 rounded-full text-[7px] font-black uppercase tracking-widest ${getGradeColor()}`}>
+                                          {gradeInfo.grade}
+                                        </span>
+                                      </td>
+                                      <td className="py-3 px-3 text-center text-[12px] font-black text-slate-200">{gradeInfo.points}</td>
+                                      <td className="py-3 px-3 text-[9px] text-slate-400">{m.comments || ''}</td>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <td className="py-3 px-3 text-center font-black text-lg text-aurora-cyan">{Math.round(finalScore)}</td>
+                                      <td className="py-3 px-3 text-center text-slate-500 font-bold">{finalMaxMarks}</td>
+                                      <td className="py-3 px-3 text-center">
+                                        <span className={`inline-block px-2.5 py-1 rounded-full text-[7px] font-black uppercase tracking-widest ${getGradeColor()}`}>
+                                          {gradeInfo.grade}
+                                        </span>
+                                      </td>
+                                      <td className="py-3 px-3 text-[9px] text-slate-400">{m.comments || ''}</td>
+                                    </>
+                                  )}
                                 </tr>
                               );
                             })}

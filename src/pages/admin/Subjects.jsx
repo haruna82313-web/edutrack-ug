@@ -22,6 +22,7 @@ const Subjects = () => {
   const [paperMaxMark, setPaperMaxMark] = useState('100');
   const [paperWeight, setPaperWeight] = useState('33.33');
   const [addingPaper, setAddingPaper] = useState(false);
+  const [paperConfigLevel, setPaperConfigLevel] = useState('O'); // Level selector for paper configs
 
   const filteredSubjects = subjects.filter(sub => 
     sub.name.toLowerCase().includes(searchTerm.toLowerCase())
@@ -49,7 +50,7 @@ const Subjects = () => {
     }
   };
 
-  const fetchPaperConfigs = async (subjectId) => {
+  const fetchPaperConfigs = async (subjectId, level = 'O') => {
     if (!subjectId) {
       setPaperConfigs([]);
       return;
@@ -62,6 +63,7 @@ const Subjects = () => {
         .select('*')
         .eq('subject_id', subjectId)
         .eq('school_id', profileData.school_id)
+        .eq('level', level)
         .order('paper_name');
 
       if (error) throw error;
@@ -77,9 +79,9 @@ const Subjects = () => {
 
   useEffect(() => {
     if (selectedSubject) {
-      fetchPaperConfigs(selectedSubject.id);
+      fetchPaperConfigs(selectedSubject.id, paperConfigLevel);
     }
-  }, [selectedSubject]);
+  }, [selectedSubject, paperConfigLevel]);
 
   const handleAddSubject = async (e) => {
     e.preventDefault();
@@ -150,10 +152,9 @@ const Subjects = () => {
     e.preventDefault();
     if (!paperName.trim() || !selectedSubject) return;
     
-    const currentLevel = selectedSubject?.level || 'O';
-    const maxPapers = currentLevel === 'O' ? 2 : 999; // O-Level max 2, A-Level unlimited
+    const maxPapers = paperConfigLevel === 'O' ? 2 : 999; // O-Level max 2, A-Level unlimited
     
-    if (currentLevel === 'O' && paperConfigs.length >= 2) {
+    if (paperConfigLevel === 'O' && paperConfigs.length >= 2) {
       alert('O-Level subjects can have a maximum of 2 papers!');
       return;
     }
@@ -166,6 +167,7 @@ const Subjects = () => {
       const { error } = await supabase.from('subject_paper_configs').insert([{ 
         subject_id: selectedSubject.id,
         school_id: profileData.school_id,
+        level: paperConfigLevel,
         paper_name: paperName.trim(),
         max_possible_raw_mark: parseInt(paperMaxMark),
         paper_weight_percentage: parseFloat(paperWeight)
@@ -176,7 +178,7 @@ const Subjects = () => {
       setPaperName('');
       setPaperMaxMark('100');
       setPaperWeight('33.33');
-      fetchPaperConfigs(selectedSubject.id);
+      fetchPaperConfigs(selectedSubject.id, paperConfigLevel);
     } catch (error) {
       alert('Error adding paper: ' + error.message);
     } finally {
@@ -193,7 +195,7 @@ const Subjects = () => {
         .eq('id', paperId);
       
       if (error) throw error;
-      fetchPaperConfigs(selectedSubject.id);
+      fetchPaperConfigs(selectedSubject.id, paperConfigLevel);
     } catch (error) {
       alert('Delete failed: ' + error.message);
     }
@@ -201,9 +203,8 @@ const Subjects = () => {
 
   const totalWeight = paperConfigs.reduce((sum, p) => sum + p.paper_weight_percentage, 0);
   const weightWarning = totalWeight > 0 && Math.abs(totalWeight - 100) > 0.1;
-  const currentLevel = selectedSubject?.level || 'O';
-  const maxPapers = currentLevel === 'O' ? 2 : 999;
-  const atPaperLimit = schoolType !== 'primary' && currentLevel === 'O' && paperConfigs.length >= maxPapers;
+  const maxPapers = paperConfigLevel === 'O' ? 2 : 999;
+  const atPaperLimit = schoolType !== 'primary' && paperConfigLevel === 'O' && paperConfigs.length >= maxPapers;
 
   return (
     <div className="space-y-6 lg:space-y-10 animate-in fade-in slide-in-from-bottom-6 duration-700 text-slate-300">
@@ -331,15 +332,40 @@ const Subjects = () => {
           <div className="bg-slate-900 p-5 lg:p-8 rounded-3xl lg:rounded-[2.5rem] shadow-2xl border border-slate-800">
             {selectedSubject ? (
               <div className="space-y-6">
-                <div className="flex items-center gap-3 pb-4 border-b border-slate-800">
-                  <div className="w-12 h-12 bg-primary-600/10 text-primary-400 rounded-2xl flex items-center justify-center">
-                    <BookOpen size={24} />
+                <div className="flex flex-col gap-3 pb-4 border-b border-slate-800">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 bg-primary-600/10 text-primary-400 rounded-2xl flex items-center justify-center">
+                      <BookOpen size={24} />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-black text-white">{selectedSubject.name}</h3>
+                    </div>
                   </div>
+                  {/* Level Selector for Paper Configs */}
                   <div>
-                    <h3 className="text-lg font-black text-white">{selectedSubject.name}</h3>
-                    <span className={`text-xs font-black uppercase tracking-widest ${currentLevel === 'A' ? 'text-blue-400' : 'text-emerald-400'}`}>
-                      {currentLevel === 'A' ? 'A-Level' : 'O-Level'} • Max Papers: {currentLevel === 'O' ? '2' : 'Unlimited'}
-                    </span>
+                    <label className="text-xs font-black text-slate-500 uppercase tracking-widest mb-1 block">Configure Papers For</label>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setPaperConfigLevel('O')}
+                        className={`flex-1 py-2 px-4 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${
+                          paperConfigLevel === 'O' 
+                            ? 'bg-emerald-600 text-white'
+                            : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+                        }`}
+                      >
+                        O-Level
+                      </button>
+                      <button
+                        onClick={() => setPaperConfigLevel('A')}
+                        className={`flex-1 py-2 px-4 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${
+                          paperConfigLevel === 'A' 
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+                        }`}
+                      >
+                        A-Level
+                      </button>
+                    </div>
                   </div>
                 </div>
 
@@ -408,7 +434,7 @@ const Subjects = () => {
                 {weightWarning && (
                   <div className="bg-amber-500/10 border border-amber-500/30 p-4 rounded-2xl">
                     <p className="text-amber-500 text-xs font-black uppercase tracking-widest">
-                      ⚠️ Total weight: {totalWeight.toFixed(2)}% — should be 100%
+                      ⚠️ {paperConfigLevel === 'O' ? 'O-Level' : 'A-Level'} Total weight: {totalWeight.toFixed(2)}% — should be 100%
                     </p>
                   </div>
                 )}
@@ -416,7 +442,7 @@ const Subjects = () => {
                 {/* Paper List */}
                 <div className="space-y-3">
                   <h4 className="text-xs font-black text-slate-500 uppercase tracking-widest">
-                    Configured Papers ({paperConfigs.length})
+                    Configured Papers ({paperConfigLevel === 'O' ? 'O-Level' : 'A-Level'}) • {paperConfigs.length}
                   </h4>
                   {paperConfigs.length === 0 ? (
                     <div className="text-center py-8 text-slate-600 text-sm">

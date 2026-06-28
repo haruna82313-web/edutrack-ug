@@ -12,7 +12,7 @@ import {
   calculateOLevelTotal, getOLevelGrade, getPrimaryGrade,
   calculateTotalALevelPoints, getALevelPrincipalGradeAndPoints,
   calculatePrimaryAggregatesAndDivision, getPrimaryGradeAggregate,
-  getALevelSubsidiaryGradeAndPoints
+  getALevelSubsidiaryGradeAndPoints, calculateWeightedPaperScore
 } from '../../utils/uneb-engine';
 import { exportToPdf } from '../../lib/exportUtils';
 
@@ -119,7 +119,7 @@ const ClassReportCards = () => {
         const studentIds = stds.map(s => s.id);
         const { data: marksData, error: marksErr } = await supabase
           .from('student_marks')
-          .select('*, subjects(name), classes(name)')
+          .select('*, subjects(name), classes(name), subject_paper_configs!left(paper_name, paper_weight_percentage, max_possible_raw_mark)')
           .in('student_id', studentIds)
           .eq('year', parseInt(selectedYear))
           .eq('term', selectedTerm)
@@ -130,23 +130,86 @@ const ClassReportCards = () => {
           const markMap = new Map();
           
           marksData.forEach(mark => {
-            const key = `${mark.student_id}-${mark.subject_id}`;
+            const key = `${mark.student_id}-${mark.subject_id}-${mark.subject_paper_config_id || 'main'}`;
             const existing = markMap.get(key);
             if (!existing || new Date(mark.created_at) > new Date(existing.created_at)) {
               markMap.set(key, mark);
             }
           });
           
-          markMap.forEach(mark => latestMarks.push(mark));
-          setAllMarks(latestMarks);
+          // Organize marks: per student, per subject (main + papers)
+          const studentSubjectMarks = {};
+          markMap.forEach(mark => {
+            const studentId = mark.student_id;
+            const subjectId = mark.subject_id;
+            if (!studentSubjectMarks[studentId]) {
+              studentSubjectMarks[studentId] = {};
+            }
+            if (!studentSubjectMarks[studentId][subjectId]) {
+              studentSubjectMarks[studentId][subjectId] = {
+                mainMark: null,
+                paperMarks: []
+              };
+            }
+            if (mark.subject_paper_config_id) {
+              studentSubjectMarks[studentId][subjectId].paperMarks.push(mark);
+            } else {
+              studentSubjectMarks[studentId][subjectId].mainMark = mark;
+            }
+          });
+
+          // Now get unique main marks (without papers)
+          const uniqueMainMarks = [];
+          const addedKeys = new Set();
+          markMap.forEach(mark => {
+            const key = `${mark.student_id}-${mark.subject_id}`;
+            if (!addedKeys.has(key)) {
+              addedKeys.add(key);
+              uniqueMainMarks.push(mark);
+            }
+          });
+          setAllMarks(uniqueMainMarks);
+
+          // Determine level
+          let isPrimary = false;
+          let isALevel = false;
+          if (selectedLevel === 'primary') {
+            isPrimary = true;
+          } else if (selectedLevel === 'A') {
+            isALevel = true;
+          } else if (selectedLevel === 'O') {
+            isPrimary = false;
+            isALevel = false;
+          } else {
+            isPrimary = schoolType === 'primary';
+            isALevel = !isPrimary && (classInfo?.level === 'A' || classInfo?.name?.toLowerCase().includes('a ') || classInfo?.name?.toLowerCase().includes('senior 6'));
+          }
           
-          // Calculate positions based on average marks
+          // Calculate positions based on average marks (weighted for A-Level)
           const studentAverages = {};
           stds.forEach(student => {
-            const studentMarks = latestMarks.filter(m => m.student_id === student.id);
-            if (studentMarks.length > 0) {
-              const total = studentMarks.reduce((sum, m) => sum + (m.marks / m.max_marks * 100), 0);
-              studentAverages[student.id] = total / studentMarks.length;
+            const subjectMarks = studentSubjectMarks[student.id] || {};
+            const subjects = Object.values(subjectMarks);
+            if (subjects.length > 0) {
+              let totalScore = 0;
+              subjects.forEach(subjectData => {
+                if (isALevel && subjectData.paperMarks.length > 0) {
+                  // Calculate weighted score
+                  const paperScores = subjectData.paperMarks.map(paperMark => ({
+                    received_raw_mark: paperMark.marks,
+                    max_possible_raw_mark: paperMark.subject_paper_configs?.max_possible_raw_mark || 100,
+                    paper_weight_percentage: paperMark.subject_paper_configs?.paper_weight_percentage || 33.33
+                  }));
+                  totalScore += calculateWeightedPaperScore(paperScores);
+                } else {
+                  // Use main mark
+                  const mark = subjectData.mainMark;
+                  if (mark) {
+                    totalScore += (mark.marks / mark.max_marks) * 100;
+                  }
+                }
+              });
+              studentAverages[student.id] = totalScore / subjects.length;
             } else {
               studentAverages[student.id] = 0;
             }
@@ -225,6 +288,7 @@ const ClassReportCards = () => {
     
     const assignedSubjectIds = new Set(assignedSubjects?.map(a => a.subject_id) || []);
     
+    // Get main subject marks
     const { data: marksData, error } = await supabase
       .from('student_marks')
       .select('*, subjects(name), classes(name)')
@@ -249,13 +313,40 @@ const ClassReportCards = () => {
     
     markMap.forEach(mark => latestMarks.push(mark));
     
+    // For A-Level, fetch paper configs and paper marks for each subject
+    const marksWithPapers = await Promise.all(latestMarks.map(async (mark) => {
+      // Fetch paper configs for this subject
+      const { data: paperConfigs } = await supabase
+        .from('subject_paper_configs')
+        .select('*')
+        .eq('subject_id', mark.subject_id)
+        .eq('school_id', mark.school_id);
+      
+      // Fetch paper marks for this student, subject, term, year
+      const { data: paperMarks } = await supabase
+        .from('student_marks')
+        .select('*, subject_paper_configs(paper_name, paper_weight_percentage, max_possible_raw_mark)')
+        .eq('student_id', studentId)
+        .eq('subject_id', mark.subject_id)
+        .eq('year', parseInt(selectedYear))
+        .eq('term', selectedTerm)
+        .eq('assessment_type', selectedAssessmentType)
+        .not('subject_paper_config_id', 'is', null);
+      
+      return {
+        ...mark,
+        paper_configs: paperConfigs || [],
+        paper_marks: paperMarks || []
+      };
+    }));
+    
     // Filter to only show assigned subjects (if there are any assignments)
     if (assignedSubjectIds.size > 0) {
-      return latestMarks.filter(mark => assignedSubjectIds.has(mark.subject_id));
+      return marksWithPapers.filter(mark => assignedSubjectIds.has(mark.subject_id));
     }
     
     // If no assignments found, show all marks (backward compatibility)
-    return latestMarks;
+    return marksWithPapers;
   };
 
   // Helper to load logo as data URL
@@ -441,11 +532,12 @@ const ClassReportCards = () => {
       const tableHeaders = isPrimary
         ? [['SUBJECT', 'SCORE', 'OUT OF', 'GRADE', 'AGGREGATE', 'REMARK']]
         : (isALevel 
-          ? [['SUBJECT', 'SCORE', 'OUT OF', 'GRADE', 'POINTS', 'REMARK']] 
+          ? [['SUBJECT', 'SUBJECT PAPERS', 'FINAL SCORE', 'GRADE', 'POINTS', 'REMARK']] 
           : [['SUBJECT', 'SCORE', 'OUT OF', 'GRADE', 'REMARK']]);
-      const tableRows = (marksData || []).map(m => {
-        // Use saved grade if available, otherwise calculate
-        let gradeInfo;
+      
+      const tableRows = [];
+      
+      (marksData || []).forEach(m => {
         const subjectName = m.subjects?.name || '';
         const isSubsidiarySubject = isALevel && (
           subjectName.toUpperCase().includes('ICT') || 
@@ -457,35 +549,76 @@ const ClassReportCards = () => {
           subjectName.toUpperCase().includes('SUBMATHS')
         );
         
+        // Calculate weighted score if we have paper marks
+        let finalScore = m.marks;
+        let finalMaxMarks = m.max_marks;
+        
+        if (isALevel && m.paper_marks && m.paper_marks.length > 0) {
+          // Prepare paper scores for calculateWeightedPaperScore
+          const paperScores = m.paper_marks.map(paperMark => ({
+            received_raw_mark: paperMark.marks,
+            max_possible_raw_mark: paperMark.subject_paper_configs?.max_possible_raw_mark || 100,
+            paper_weight_percentage: paperMark.subject_paper_configs?.paper_weight_percentage || 33.33
+          }));
+          
+          finalScore = calculateWeightedPaperScore(paperScores);
+          finalMaxMarks = 100;
+        }
+        
+        // Use saved grade if available, otherwise calculate
+        let gradeInfo;
         if (m.grade) {
           gradeInfo = { grade: m.grade, points: m.points };
         } else if (isPrimary) {
-          gradeInfo = getPrimaryGrade(m.marks, gradingConfigs, m.max_marks);
+          gradeInfo = getPrimaryGrade(finalScore, gradingConfigs, finalMaxMarks);
         } else if (isALevel) {
           if (isSubsidiarySubject) {
-            gradeInfo = getALevelSubsidiaryGradeAndPoints(m.marks, m.max_marks);
+            gradeInfo = getALevelSubsidiaryGradeAndPoints(finalScore, finalMaxMarks);
           } else {
-            gradeInfo = getALevelPrincipalGradeAndPoints(m.marks, m.max_marks);
+            gradeInfo = getALevelPrincipalGradeAndPoints(finalScore, finalMaxMarks);
           }
         } else {
-          gradeInfo = getOLevelGrade(m.marks, m.max_marks);
+          gradeInfo = getOLevelGrade(finalScore, finalMaxMarks);
         }
         
-        const row = [
-          m.subjects?.name || 'Unknown',
-          m.marks || '-',
-          m.max_marks || '-',
+        // Add main subject row
+        if (isALevel) {
+          // Build subject papers column content
+          let papersColumnContent = '';
+          if (m.paper_marks && m.paper_marks.length > 0) {
+            papersColumnContent = m.paper_marks.map(paperMark => {
+              const paperName = paperMark.subject_paper_configs?.paper_name || 'Paper';
+              const paperWeight = paperMark.subject_paper_configs?.paper_weight_percentage || 33.33;
+              const paperMaxMarks = paperMark.subject_paper_configs?.max_possible_raw_mark || 100;
+              return `${paperName} (${paperWeight}%): ${paperMark.marks}/${paperMaxMarks}`;
+            }).join('\n');
+          }
+          
+          const row = [
+            subjectName,
+            papersColumnContent,
+            Math.round(finalScore),
+            gradeInfo.grade,
+            gradeInfo.points,
+            m.comments || ''
+          ];
+          
+          tableRows.push(row);
+        } else {
+          const row = [
+          subjectName,
+          Math.round(finalScore),
+          finalMaxMarks,
           gradeInfo.grade
         ];
-        
-        if (isPrimary) {
-          row.push(getPrimaryGradeAggregate(gradeInfo.grade));
-        } else if (isALevel) {
-          row.push(gradeInfo.points);
+          
+          if (isPrimary) {
+            row.push(getPrimaryGradeAggregate(gradeInfo.grade));
+          }
+          
+          row.push(m.comments || '');
+          tableRows.push(row);
         }
-        
-        row.push(m.comments || '');
-        return row;
       });
 
       autoTable(doc, {
@@ -521,7 +654,24 @@ const ClassReportCards = () => {
       // ===== SUMMARY STATS =====
       // Safeguard for empty marks data
       const safeMarksData = marksData || [];
-      const totalMarks = safeMarksData.reduce((sum, m) => sum + (parseFloat(m.marks) || 0), 0);
+      
+      // Calculate final scores (including weighted for A-Level)
+      const finalScores = safeMarksData.map(m => {
+        let finalScore = m.marks;
+        
+        if (isALevel && m.paper_marks && m.paper_marks.length > 0) {
+          const paperScores = m.paper_marks.map(paperMark => ({
+            received_raw_mark: paperMark.marks,
+            max_possible_raw_mark: paperMark.subject_paper_configs?.max_possible_raw_mark || 100,
+            paper_weight_percentage: paperMark.subject_paper_configs?.paper_weight_percentage || 33.33
+          }));
+          finalScore = calculateWeightedPaperScore(paperScores);
+        }
+        
+        return finalScore;
+      });
+      
+      const totalMarks = finalScores.reduce((sum, score) => sum + (parseFloat(score) || 0), 0);
       const avgScore = safeMarksData.length > 0 ? (totalMarks / safeMarksData.length).toFixed(2) : '0.00';
       
       let stats;
@@ -538,7 +688,7 @@ const ClassReportCards = () => {
       } else if (isALevel) {
         // Calculate total A'Level points
         let totalPoints = 0;
-        safeMarksData.forEach(m => {
+        safeMarksData.forEach((m, index) => {
           let gradeInfo;
           const subjectName = m.subjects?.name || '';
           const isSubsidiarySubject = isALevel && (
@@ -551,12 +701,14 @@ const ClassReportCards = () => {
             subjectName.toUpperCase().includes('SUBMATHS')
           );
           
+          const finalScore = finalScores[index];
+          
           if (m.grade && m.points !== undefined) {
             gradeInfo = { points: m.points };
           } else if (isSubsidiarySubject) {
-            gradeInfo = getALevelSubsidiaryGradeAndPoints(m.marks, m.max_marks);
+            gradeInfo = getALevelSubsidiaryGradeAndPoints(finalScore, 100);
           } else {
-            gradeInfo = getALevelPrincipalGradeAndPoints(m.marks, m.max_marks);
+            gradeInfo = getALevelPrincipalGradeAndPoints(finalScore, 100);
           }
           totalPoints += gradeInfo.points || 0;
         });
@@ -1311,9 +1463,7 @@ ${pronoun} is encouraged to maintain ${pronounObjective.toLowerCase()} outstandi
                 schoolType={schoolType}
                 gradingConfigs={gradingConfigs}
                 selectedLevel={selectedLevel}
-                allMarks={allMarks}
-                studentPositions={studentPositions}
-                students={students}
+                schoolInfo={schoolInfo}
               />
             </div>
 
@@ -1384,7 +1534,7 @@ ${pronoun} is encouraged to maintain ${pronounObjective.toLowerCase()} outstandi
 };
 
 // Child component to show marks
-const MarksTable = ({ studentId, year, term, assessmentType, classLevel, schoolType, gradingConfigs, selectedLevel, allMarks, studentPositions, students }) => {
+const MarksTable = ({ studentId, year, term, assessmentType, classLevel, schoolType, gradingConfigs, selectedLevel, schoolInfo }) => {
   const [marks, setMarks] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -1405,32 +1555,88 @@ const MarksTable = ({ studentId, year, term, assessmentType, classLevel, schoolT
     isALevel = !isPrimary && (classLevel === 'A');
   }
 
+  // Get student marks function (same as in generateReportCardBlob)
+  const getStudentMarks = async () => {
+    // First get the student's assigned subjects
+    const { data: assignedSubjects } = await supabase
+      .from('student_subjects')
+      .select('subject_id')
+      .eq('student_id', studentId)
+      .eq('academic_year', year);
+    
+    const assignedSubjectIds = new Set(assignedSubjects?.map(a => a.subject_id) || []);
+    
+    // Get main subject marks
+    const { data: marksData, error } = await supabase
+      .from('student_marks')
+      .select('*, subjects(name), classes(name), subject_paper_configs!left(paper_name, paper_weight_percentage, max_possible_raw_mark)')
+      .eq('student_id', studentId)
+      .eq('year', parseInt(year))
+      .eq('term', term)
+      .eq('assessment_type', assessmentType);
+    
+    if (error) return [];
+    
+    // Safeguard: For each subject (and paper), only keep the latest mark
+    const latestMarks = [];
+    const markMap = new Map();
+    
+    (marksData || []).forEach(mark => {
+      const key = `${mark.student_id}-${mark.subject_id}-${mark.subject_paper_config_id || 'main'}`;
+      const existing = markMap.get(key);
+      if (!existing || new Date(mark.created_at) > new Date(existing.created_at)) {
+        markMap.set(key, mark);
+      }
+    });
+    
+    // Organize marks: per subject (main + papers)
+    const subjectMarkMap = new Map();
+    markMap.forEach(mark => {
+      const subjectId = mark.subject_id;
+      if (!subjectMarkMap.has(subjectId)) {
+        subjectMarkMap.set(subjectId, {
+          mainMark: null,
+          paperMarks: []
+        });
+      }
+      if (mark.subject_paper_config_id) {
+        subjectMarkMap.get(subjectId).paperMarks.push(mark);
+      } else {
+        subjectMarkMap.get(subjectId).mainMark = mark;
+      }
+    });
+    
+    // Build the final marks array (one per subject)
+    const finalMarks = [];
+    subjectMarkMap.forEach((data, subjectId) => {
+      if (data.mainMark) {
+        finalMarks.push({
+          ...data.mainMark,
+          paperMarks: data.paperMarks
+        });
+      } else if (data.paperMarks.length > 0) {
+        // If no main mark but have papers, use first paper as base (for subject info)
+        finalMarks.push({
+          ...data.paperMarks[0],
+          paperMarks: data.paperMarks
+        });
+      }
+    });
+    
+    // Filter to only show assigned subjects (if there are any assignments)
+    if (assignedSubjectIds.size > 0) {
+      return finalMarks.filter(m => assignedSubjectIds.has(m.subject_id));
+    }
+    
+    // If no assignments found, show all marks (backward compatibility)
+    return finalMarks;
+  };
+
   useEffect(() => {
     const fetchMarks = async () => {
       try {
-        const { data, error } = await supabase
-          .from('student_marks')
-          .select(`*, subjects(name), classes(name)`)
-          .eq('student_id', studentId)
-          .eq('year', parseInt(year))
-          .eq('term', term)
-          .eq('assessment_type', assessmentType);
-        if (error) throw error;
-        
-        // Safeguard: For each subject, only keep the latest mark
-        const latestMarks = [];
-        const markMap = new Map();
-        
-        (data || []).forEach(mark => {
-          const key = mark.subject_id;
-          const existing = markMap.get(key);
-          if (!existing || new Date(mark.created_at) > new Date(existing.created_at)) {
-            markMap.set(key, mark);
-          }
-        });
-        
-        markMap.forEach(mark => latestMarks.push(mark));
-        setMarks(latestMarks);
+        const data = await getStudentMarks();
+        setMarks(data);
       } catch (error) {
         console.error('Error fetching marks:', error);
       } finally {
@@ -1456,8 +1662,13 @@ const MarksTable = ({ studentId, year, term, assessmentType, classLevel, schoolT
         <thead>
           <tr className="border-b border-slate-800 bg-slate-950">
             <th className="py-2.5 px-3 text-[9px] font-black text-slate-500 uppercase tracking-widest">Subject</th>
-            <th className="py-2.5 px-3 text-[9px] font-black text-slate-500 uppercase tracking-widest text-center">Marks</th>
-            <th className="py-2.5 px-3 text-[9px] font-black text-slate-500 uppercase tracking-widest text-center">Max</th>
+            {isALevel && (
+              <th className="py-2.5 px-3 text-[9px] font-black text-slate-500 uppercase tracking-widest">Subject Papers</th>
+            )}
+            <th className="py-2.5 px-3 text-[9px] font-black text-slate-500 uppercase tracking-widest text-center">Final Score</th>
+            {!isALevel && (
+              <th className="py-2.5 px-3 text-[9px] font-black text-slate-500 uppercase tracking-widest text-center">Max</th>
+            )}
             <th className="py-2.5 px-3 text-[9px] font-black text-slate-500 uppercase tracking-widest text-center">Grade</th>
             {isPrimary && (
               <th className="py-2.5 px-3 text-[9px] font-black text-slate-500 uppercase tracking-widest text-center">Aggregate</th>
@@ -1471,6 +1682,8 @@ const MarksTable = ({ studentId, year, term, assessmentType, classLevel, schoolT
         <tbody className="divide-y divide-slate-800">
           {marks.map((m) => {
             let gradeInfo;
+            let finalScore = m.marks;
+            let finalMaxMarks = m.max_marks;
             const subjectName = m.subjects?.name || '';
             const isSubsidiarySubject = isALevel && (
               subjectName.toUpperCase().includes('ICT') || 
@@ -1482,18 +1695,28 @@ const MarksTable = ({ studentId, year, term, assessmentType, classLevel, schoolT
               subjectName.toUpperCase().includes('SUBMATHS')
             );
             
+            if (isALevel && m.paperMarks && m.paperMarks.length > 0) {
+              const paperScores = m.paperMarks.map(paperMark => ({
+                received_raw_mark: paperMark.marks,
+                max_possible_raw_mark: paperMark.subject_paper_configs?.max_possible_raw_mark || 100,
+                paper_weight_percentage: paperMark.subject_paper_configs?.paper_weight_percentage || 33.33
+              }));
+              finalScore = calculateWeightedPaperScore(paperScores);
+              finalMaxMarks = 100;
+            }
+            
             if (m.grade) {
               gradeInfo = { grade: m.grade, description: m.description || '', points: m.points };
             } else if (isPrimary) {
-              gradeInfo = getPrimaryGrade(m.marks, gradingConfigs, m.max_marks);
+              gradeInfo = getPrimaryGrade(finalScore, gradingConfigs, finalMaxMarks);
             } else if (isALevel) {
               if (isSubsidiarySubject) {
-                gradeInfo = getALevelSubsidiaryGradeAndPoints(m.marks, m.max_marks);
+                gradeInfo = getALevelSubsidiaryGradeAndPoints(finalScore, finalMaxMarks);
               } else {
-                gradeInfo = getALevelPrincipalGradeAndPoints(m.marks, m.max_marks);
+                gradeInfo = getALevelPrincipalGradeAndPoints(finalScore, finalMaxMarks);
               }
             } else {
-              gradeInfo = getOLevelGrade(m.marks, m.max_marks);
+              gradeInfo = getOLevelGrade(finalScore, finalMaxMarks);
             }
             
             const getGradeColor = () => {
@@ -1507,11 +1730,31 @@ const MarksTable = ({ studentId, year, term, assessmentType, classLevel, schoolT
                 default: return 'text-aurora-rose bg-aurora-rose/10 border border-aurora-rose/20';
               }
             };
+            
+            // Build subject papers column content
+            let papersColumnContent = null;
+            if (isALevel && m.paperMarks && m.paperMarks.length > 0) {
+              papersColumnContent = (
+                <div className="space-y-1">
+                  {m.paperMarks.map((paperMark, idx) => (
+                    <div key={idx} className="text-[10px] text-slate-400">
+                      {paperMark.subject_paper_configs?.paper_name || 'Paper'} ({paperMark.subject_paper_configs?.paper_weight_percentage || 33.33}%): {paperMark.marks}/{paperMark.subject_paper_configs?.max_possible_raw_mark || 100}
+                    </div>
+                  ))}
+                </div>
+              );
+            }
+            
             return (
               <tr key={m.id} className="hover:bg-white/5">
                 <td className="py-3 px-3 font-bold text-slate-200 text-[13px]">{m.subjects?.name || 'Unknown'}</td>
-                <td className="py-3 px-3 text-center font-black text-lg text-aurora-cyan">{m.marks}</td>
-                <td className="py-3 px-3 text-center text-slate-500 font-bold">{m.max_marks}</td>
+                {isALevel && (
+                  <td className="py-3 px-3">{papersColumnContent}</td>
+                )}
+                <td className="py-3 px-3 text-center font-black text-lg text-aurora-cyan">{Math.round(finalScore)}</td>
+                {!isALevel && (
+                  <td className="py-3 px-3 text-center text-slate-500 font-bold">{finalMaxMarks}</td>
+                )}
                 <td className="py-3 px-3 text-center">
                   <span className={`inline-block px-2.5 py-1 rounded-full text-[8px] font-black uppercase tracking-widest ${getGradeColor()}`}>
                     {gradeInfo.grade}
